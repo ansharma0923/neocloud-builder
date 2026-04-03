@@ -26,7 +26,8 @@ An AI-native planning workspace for AI data centers and neoclouds. Design rack t
 └──────────────────────┬───────────────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────────────┐
-│  PostgreSQL + Prisma ORM  │  Local/S3 Storage Adapter    │
+│  SQLite (dev) / PostgreSQL (prod) + Prisma ORM           │
+│  Local/S3 Storage Adapter                                │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -36,7 +37,7 @@ An AI-native planning workspace for AI data centers and neoclouds. Design rack t
 |-------|-----------|
 | Frontend | Next.js 14, TypeScript, Tailwind CSS |
 | Auth | NextAuth.js v5 |
-| Database | PostgreSQL + Prisma ORM |
+| Database | SQLite (local dev) / PostgreSQL (production) + Prisma ORM |
 | AI | OpenAI API (task-routed) |
 | State | Zustand + SWR |
 | Validation | Zod |
@@ -45,16 +46,32 @@ An AI-native planning workspace for AI data centers and neoclouds. Design rack t
 
 ## Quickstart
 
-```bash
-git clone https://github.com/ansharma0923/neocloud-builder.git
-cd neocloud-builder
-pnpm install
-cp .env.example .env.local   # fill in your values
-pnpm db:migrate
-pnpm dev
-```
+1. Clone the repo and install dependencies:
+   ```bash
+   npm install
+   ```
 
-Open [http://localhost:3000](http://localhost:3000).
+2. Copy environment variables:
+   ```bash
+   cp .env.example .env.local      # Mac/Linux
+   copy .env.example .env.local    # Windows
+   ```
+   Then open `.env.local` and fill in your `OPENAI_API_KEY` and `NEXTAUTH_SECRET`.
+
+3. Set up the database (SQLite, zero install):
+   ```bash
+   npm run db:migrate
+   npm run db:generate
+   ```
+
+4. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open [http://localhost:3000](http://localhost:3000)
+
+> **Production note:** PostgreSQL is recommended for production. Set `DATABASE_URL` to a PostgreSQL connection string and change `provider` in `prisma/schema.prisma` to `"postgresql"`.
 
 ## Environment Setup
 
@@ -62,7 +79,7 @@ See `.env.example` for all variables. Required:
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | SQLite path for local dev (`file:./dev.db`); PostgreSQL URL for production |
 | `NEXTAUTH_SECRET` | Auth secret (`openssl rand -base64 32`) |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `OPENAI_MODEL_FAST` | Model for fast chat (e.g. `gpt-4o-mini`) |

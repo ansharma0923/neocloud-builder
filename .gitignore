@@ -26,11 +26,13 @@ coverage/
 /tmp/
 
 # Databases
+# SQLite local database
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
 *.db
 *.sqlite
 *.sqlite3
-prisma/dev.db
-prisma/*.db
 
 # OS files
 .DS_Store
