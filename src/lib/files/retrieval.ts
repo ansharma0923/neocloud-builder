@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/client';
 import { createEmbedding, createChatCompletion } from '@/lib/ai/model-router';
-import { cosineSimilarity } from './ingestion';
+import { cosineSimilarity } from './utils';
 import { logger } from '@/lib/observability/logger';
 
 export interface RetrievedChunk {

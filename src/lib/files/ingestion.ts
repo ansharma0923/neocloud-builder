@@ -4,6 +4,9 @@ import { prisma } from '@/lib/db/client';
 import { getStorageAdapter } from './storage';
 import { createEmbedding } from '@/lib/ai/model-router';
 import { logger } from '@/lib/observability/logger';
+import { cosineSimilarity } from './utils';
+
+export { cosineSimilarity };
 
 export const SUPPORTED_MIME_TYPES = [
   'application/pdf',
@@ -164,23 +167,6 @@ export function chunkText(
   }
 
   return chunks;
-}
-
-/**
- * Calculate cosine similarity between two vectors.
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 /**
