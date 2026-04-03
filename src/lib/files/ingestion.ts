@@ -91,8 +91,7 @@ export async function extractText(
   if (mimeType === 'application/pdf') {
     try {
       // Dynamic import to avoid issues in environments without native deps
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfParse = (await import('pdf-parse' as any)).default;
+      const pdfParse = (await import('pdf-parse')).default;
       const result = await pdfParse(buffer);
       return result.text;
     } catch (error) {
