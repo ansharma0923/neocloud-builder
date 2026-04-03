@@ -27,13 +27,12 @@ export async function retrieveRelevantChunks(
   if (attachments.length === 0) return [];
 
   // Embed the query
-  let queryEmbedding: number[];
-  try {
-    queryEmbedding = await createEmbedding(query);
-  } catch (error) {
+  const queryEmbedding = await createEmbedding(query).catch((error: unknown) => {
     logger.warn('query_embedding_failed', { chatId, error: String(error) });
-    return [];
-  }
+    return null;
+  });
+
+  if (!queryEmbedding) return [];
 
   const results: RetrievedChunk[] = [];
 
