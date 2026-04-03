@@ -1,0 +1,186 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  image       String?
+  role        String   @default("user")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspaces  Workspace[]
+  chats       Chat[]
+  attachments Attachment[]
+
+  @@index([email])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  chats Chat[]
+
+  @@index([ownerId])
+}
+
+model Chat {
+  id          String    @id @default(cuid())
+  workspaceId String?
+  userId      String
+  title       String    @default("New Chat")
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  attachments Attachment[]
+  plan        CanonicalPlan?
+  artifacts   Artifact[]
+  modelRuns   ModelRun[]
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  chatId     String
+  role       String
+  content    String
+  metadata   Json     @default("{}")
+  tokenCount Int?
+  modelId    String?
+  latencyMs  Int?
+  createdAt  DateTime @default(now())
+
+  chat        Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+  planVersions PlanVersion[]
+  modelRuns   ModelRun[]
+
+  @@index([chatId])
+  @@index([role])
+}
+
+model Attachment {
+  id            String   @id @default(cuid())
+  chatId        String
+  messageId     String?
+  userId        String
+  filename      String
+  originalName  String
+  mimeType      String
+  size          Int
+  storagePath   String
+  extractedText String?
+  status        String   @default("pending")
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  chat    Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([userId])
+  @@index([status])
+  @@index([messageId])
+}
+
+model CanonicalPlan {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  version   Int      @default(1)
+  state     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chat     Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  versions PlanVersion[]
+  artifacts Artifact[]
+
+  @@index([chatId])
+}
+
+model PlanVersion {
+  id                   String   @id @default(cuid())
+  planId               String
+  version              Int
+  state                Json
+  changeSummary        String?
+  triggeredByMessageId String?
+  createdAt            DateTime @default(now())
+
+  plan              CanonicalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  triggeredByMessage Message?    @relation(fields: [triggeredByMessageId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@index([triggeredByMessageId])
+}
+
+model Artifact {
+  id            String   @id @default(cuid())
+  chatId        String
+  planVersionId String?
+  type          String
+  title         String
+  content       Json
+  status        String   @default("pending")
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  chat        Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  planVersion CanonicalPlan? @relation(fields: [planVersionId], references: [id], onDelete: SetNull)
+
+  @@index([chatId])
+  @@index([planVersionId])
+  @@index([type])
+  @@index([status])
+}
+
+model ModelRun {
+  id               String   @id @default(cuid())
+  chatId           String?
+  messageId        String?
+  model            String
+  taskType         String
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+  latencyMs        Int?
+  status           String   @default("pending")
+  error            String?
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  chat    Chat?    @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([chatId])
+  @@index([messageId])
+  @@index([model])
+  @@index([status])
+}
