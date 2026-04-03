@@ -1,0 +1,11 @@
+# Global owner
+* @ansharma0923
+
+# Planning engine
+/src/lib/planning/ @ansharma0923
+
+# AI layer
+/src/lib/ai/ @ansharma0923
+
+# Database schema
+/prisma/ @ansharma0923

@@ -1,1 +1,59 @@
+# Environment files
+.env
+.env.local
+.env.*
+.env.*.local
 
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage/
+
+# Local storage (dev uploads)
+/uploads/
+/artifacts/
+
+# Temp
+/tmp/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db
+prisma/*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Keys / certs
+*.pem
+*.key
+*.cert
+
+# Vercel
+.vercel/
+
+# Logs
+*.log
+logs/
+
+# Turbo
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# Storybook
+storybook-static/
