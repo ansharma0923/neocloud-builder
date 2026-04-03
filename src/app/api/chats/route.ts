@@ -3,14 +3,12 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/db/client';
 import { CreateChatSchema, PaginationSchema } from '@/schemas/api';
 import { logger } from '@/lib/observability/logger';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const { searchParams } = new URL(req.url);
   const pagination = PaginationSchema.parse({
@@ -45,29 +43,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const body = await req.json().catch(() => ({}));
   const parsed = CreateChatSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.errors }, { status: 400 });
   }
-
-  // Ensure user exists in DB
-  await prisma.user.upsert({
-    where: { id: userId },
-    update: {},
-    create: {
-      id: userId,
-      email: session.user.email ?? `${userId}@unknown.com`,
-      name: session.user.name ?? null,
-      image: session.user.image ?? null,
-    },
-  });
 
   const chat = await prisma.chat.create({
     data: {

@@ -6,13 +6,13 @@ import { runPlanningPipeline } from '@/lib/planning/pipeline';
 import { retrieveRelevantChunks, buildFileContext } from '@/lib/files/retrieval';
 import { createChatCompletion } from '@/lib/ai/model-router';
 import { logger } from '@/lib/observability/logger';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 import type { CanonicalPlanState, PipelineResult } from '@/types/planning';
 
 export async function POST(req: NextRequest, { params }: { params: { chatId: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const body = await req.json().catch(() => ({}));
   const parsed = SendMessageSchema.safeParse(body);
