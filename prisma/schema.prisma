@@ -115,7 +115,7 @@ model CanonicalPlan {
   id        String   @id @default(cuid())
   chatId    String   @unique
   version   Int      @default(1)
-  state     String
+  state     String   @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -130,7 +130,7 @@ model PlanVersion {
   id                   String   @id @default(cuid())
   planId               String
   version              Int
-  state                String
+  state                String   @default("{}")
   changeSummary        String?
   triggeredByMessageId String?
   createdAt            DateTime @default(now())
@@ -148,7 +148,7 @@ model Artifact {
   planVersionId String?
   type          String
   title         String
-  content       String
+  content       String   @default("{}")
   status        String   @default("pending")
   metadata      String   @default("{}")
   createdAt     DateTime @default(now())
