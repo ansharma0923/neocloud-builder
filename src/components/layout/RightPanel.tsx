@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/app-store';
 import { X, FileText, Brain, Package, Layout, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { CanonicalPlanState } from '@/types/planning';
+import type { CanonicalPlanState, DiagramSpec } from '@/types/planning';
+import { DiagramRenderer } from '@/components/artifacts/DiagramRenderer';
 
 interface RightPanelProps {
   chatId: string;
@@ -245,7 +246,7 @@ function ArtifactsTab({
       {generating && (
         <div className="flex items-center gap-2 text-xs text-[#a3a3a3] py-2">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Generating... (20-30s)</span>
+          <span>Building diagram...</span>
         </div>
       )}
 
@@ -275,9 +276,9 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
     // ignore
   }
 
-  const imageUrl =
-    artifact.type === 'generated_image' && parsedContent
-      ? (parsedContent.originalUrl as string | undefined)
+  const diagramSpec: DiagramSpec | null =
+    artifact.type === 'generated_image' && parsedContent && 'nodes' in parsedContent
+      ? (parsedContent as unknown as DiagramSpec)
       : null;
 
   return (
@@ -286,13 +287,10 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
         <p className="text-xs text-[#a3a3a3] font-medium leading-tight">{artifact.title}</p>
         <span className="text-[10px] text-[#525252] shrink-0">{artifact.type}</span>
       </div>
-      {imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageUrl}
-          alt={artifact.title}
-          className="w-full rounded border border-[#2a2a2a]"
-        />
+      {diagramSpec && (
+        <div className="w-full overflow-x-auto rounded border border-[#2a2a2a]">
+          <DiagramRenderer spec={diagramSpec} width={280} height={200} />
+        </div>
       )}
     </div>
   );
