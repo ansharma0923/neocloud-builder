@@ -6,30 +6,22 @@
 
 ## Local Setup
 
-### Database setup (SQLite — zero install)
+### One-time database setup
 
-The app uses SQLite for local development. No installation required.
+Create a `.env` file in the project root with:
+```
+DATABASE_URL="file:./dev.db"
+```
 
-1. Copy the environment file:
-   ```
-   cp .env.example .env.local        # Mac/Linux
-   copy .env.example .env.local      # Windows
-   ```
+Also create `.env.local` with all variables from `.env.example`.
 
-2. Run migrations (this creates `prisma/dev.db` automatically):
-   ```
-   npm run db:migrate
-   ```
-   When prompted for a migration name, type: `init`
+Then run:
+```
+npx prisma migrate dev --name init
+npx prisma generate
+```
 
-3. Generate the Prisma client:
-   ```
-   npm run db:generate
-   ```
-
-That's it. No Docker, no Postgres, no containers needed for local dev.
-
-> **Production note:** For production deployment, set `DATABASE_URL` to a PostgreSQL connection string and change `provider` in `prisma/schema.prisma` to `"postgresql"`.
+This creates a local SQLite database file at `prisma/dev.db`. No PostgreSQL or Docker required.
 
 ### Full setup
 
