@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/app-store';
-import { X, FileText, Brain, Package, Layout, Loader2 } from 'lucide-react';
+import { X, FileText, Brain, Package, Layout, Loader2, Maximize2, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CanonicalPlanState, DiagramSpec } from '@/types/planning';
 import { DiagramRenderer } from '@/components/artifacts/DiagramRenderer';
@@ -10,6 +10,9 @@ import { DiagramRenderer } from '@/components/artifacts/DiagramRenderer';
 interface RightPanelProps {
   chatId: string;
 }
+
+const DIAGRAM_FULL_W = 900;
+const DIAGRAM_FULL_H = 540;
 
 interface Artifact {
   id: string;
@@ -266,7 +269,107 @@ function ArtifactsTab({
   );
 }
 
+function DiagramThumbnail({ spec, svgId, onClick }: { spec: DiagramSpec; svgId: string; onClick: () => void }) {
+  const scale = 256 / DIAGRAM_FULL_W;
+  const thumbH = Math.round(DIAGRAM_FULL_H * scale);
+  return (
+    <div
+      className="relative cursor-pointer group"
+      style={{ width: 256, height: thumbH, overflow: 'hidden' }}
+      onClick={onClick}
+    >
+      <div style={{ width: DIAGRAM_FULL_W, height: DIAGRAM_FULL_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+        <DiagramRenderer spec={spec} width={DIAGRAM_FULL_W} height={DIAGRAM_FULL_H} svgId={svgId} />
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition-colors">
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-white font-medium flex items-center gap-1">
+          <Maximize2 className="w-3.5 h-3.5" />
+          Click to expand
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function DiagramModal({ spec, svgId, title, onClose }: { spec: DiagramSpec; svgId: string; title: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function handleSavePng() {
+    const svgEl = document.getElementById(svgId) as SVGSVGElement | null;
+    if (!svgEl) return;
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svgEl);
+    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const SCALE = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = DIAGRAM_FULL_W * SCALE;
+      canvas.height = DIAGRAM_FULL_H * SCALE;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const pngUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = pngUrl;
+      const safeName = title.replace(/[/\\:*?"<>|\x00]/g, '_').replace(/\s+/g, '_');
+      a.download = `${safeName}.png`;
+      a.click();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#111111] rounded-xl overflow-hidden flex flex-col"
+        style={{ width: DIAGRAM_FULL_W + 32, maxWidth: '98vw' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2a2a]">
+          <span className="text-sm font-medium text-[#f5f5f5]">{title}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSavePng}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1a1a1a] text-xs text-[#a3a3a3] hover:text-[#f5f5f5] hover:bg-[#222222] transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Save as PNG
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-[#1a1a1a] text-[#525252] hover:text-[#a3a3a3]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4 overflow-auto">
+          <DiagramRenderer spec={spec} width={DIAGRAM_FULL_W} height={DIAGRAM_FULL_H} svgId={svgId} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact }: { artifact: Artifact }) {
+  const [modalOpen, setModalOpen] = useState(false);
   let parsedContent: Record<string, unknown> | null = null;
   try {
     if (artifact.content) {
@@ -284,6 +387,8 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
       ? (parsedContent as unknown as DiagramSpec)
       : null;
 
+  const svgId = `diagram-svg-${artifact.id}`;
+
   return (
     <div className="bg-[#1a1a1a] rounded-lg p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -291,9 +396,17 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
         <span className="text-[10px] text-[#525252] shrink-0">{artifact.type}</span>
       </div>
       {diagramSpec && (
-        <div className="w-full overflow-x-auto rounded border border-[#2a2a2a]">
-          <DiagramRenderer spec={diagramSpec} width={280} height={200} />
+        <div className="w-full rounded border border-[#2a2a2a] overflow-hidden">
+          <DiagramThumbnail spec={diagramSpec} svgId={`thumb-${svgId}`} onClick={() => setModalOpen(true)} />
         </div>
+      )}
+      {diagramSpec && modalOpen && (
+        <DiagramModal
+          spec={diagramSpec}
+          svgId={svgId}
+          title={artifact.title}
+          onClose={() => setModalOpen(false)}
+        />
       )}
     </div>
   );

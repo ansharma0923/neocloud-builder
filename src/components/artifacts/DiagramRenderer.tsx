@@ -6,6 +6,7 @@ interface DiagramRendererProps {
   spec: DiagramSpec;
   width?: number;
   height?: number;
+  svgId?: string;
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -26,11 +27,11 @@ function zoneColor(zone: DiagramZone | undefined): string {
 
 // ─── Topology 2D ─────────────────────────────────────────────────────────────
 
-function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number; height: number }) {
+function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
   const PADDING = 32;
-  const NODE_W = 80;
-  const NODE_H = 32;
-  const ROW_H = 80;
+  const NODE_W = 110;
+  const NODE_H = 36;
+  const ROW_H = 100;
   const HEADER_H = 30;
 
   // Group nodes into layers by zone
@@ -77,6 +78,7 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
 
   return (
     <svg
+      id={svgId}
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
@@ -132,7 +134,7 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
             x={PADDING + 8}
             y={y}
             fontFamily="ui-monospace, monospace"
-            fontSize={9}
+            fontSize={10}
             fill={color}
             opacity={0.8}
           >
@@ -187,10 +189,10 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
               y={pos.y + NODE_H / 2 + 4}
               textAnchor="middle"
               fontFamily="ui-monospace, monospace"
-              fontSize={9}
+              fontSize={11}
               fill="#f5f5f5"
             >
-              {node.label.length > 12 ? node.label.slice(0, 11) + '…' : node.label}
+              {node.label}
             </text>
           </g>
         );
@@ -201,11 +203,11 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
 
 // ─── Logical Arch ─────────────────────────────────────────────────────────────
 
-function LogicalArch({ spec, width, height }: { spec: DiagramSpec; width: number; height: number }) {
+function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
   const PADDING = 32;
   const LEFT_LABEL_W = 72;
-  const NODE_W = 90;
-  const NODE_H = 34;
+  const NODE_W = 130;
+  const NODE_H = 40;
   const HEADER_H = 28;
 
   const usableH = height - HEADER_H - PADDING;
@@ -233,6 +235,7 @@ function LogicalArch({ spec, width, height }: { spec: DiagramSpec; width: number
 
   return (
     <svg
+      id={svgId}
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
@@ -278,10 +281,10 @@ function LogicalArch({ spec, width, height }: { spec: DiagramSpec; width: number
               y={y + laneH / 2 + 4}
               textAnchor="end"
               fontFamily="ui-monospace, monospace"
-              fontSize={9}
+              fontSize={10}
               fill={color}
             >
-              {zone.label.length > 10 ? zone.label.slice(0, 9) + '…' : zone.label}
+              {zone.label}
             </text>
           </g>
         );
@@ -332,10 +335,10 @@ function LogicalArch({ spec, width, height }: { spec: DiagramSpec; width: number
               y={pos.y + NODE_H / 2 + 4}
               textAnchor="middle"
               fontFamily="ui-monospace, monospace"
-              fontSize={9}
+              fontSize={11}
               fill="#f5f5f5"
             >
-              {node.label.length > 13 ? node.label.slice(0, 12) + '…' : node.label}
+              {node.label}
             </text>
           </g>
         );
@@ -346,11 +349,11 @@ function LogicalArch({ spec, width, height }: { spec: DiagramSpec; width: number
 
 // ─── Site Layout ──────────────────────────────────────────────────────────────
 
-function SiteLayout({ spec, width, height }: { spec: DiagramSpec; width: number; height: number }) {
+function SiteLayout({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
   const PADDING = 32;
   const HEADER_H = 28;
-  const ROOM_W = 110;
-  const ROOM_H = 60;
+  const ROOM_W = 150;
+  const ROOM_H = 80;
   const COLS = 2;
   const GAP = 16;
 
@@ -377,6 +380,7 @@ function SiteLayout({ spec, width, height }: { spec: DiagramSpec; width: number;
 
   return (
     <svg
+      id={svgId}
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
@@ -444,10 +448,10 @@ function SiteLayout({ spec, width, height }: { spec: DiagramSpec; width: number;
               y={pos.y + ROOM_H / 2 + 4}
               textAnchor="middle"
               fontFamily="ui-monospace, monospace"
-              fontSize={9}
+              fontSize={11}
               fill="#f5f5f5"
             >
-              {node.label.length > 14 ? node.label.slice(0, 13) + '…' : node.label}
+              {node.label}
             </text>
           </g>
         );
@@ -458,24 +462,24 @@ function SiteLayout({ spec, width, height }: { spec: DiagramSpec; width: number;
 
 // ─── Fallback (rack_row / presentation / schematic) ──────────────────────────
 
-function GenericDiagram({ spec, width, height }: { spec: DiagramSpec; width: number; height: number }) {
+function GenericDiagram({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
   // Reuse Topology2D layout as a sensible fallback
-  return <Topology2D spec={spec} width={width} height={height} />;
+  return <Topology2D spec={spec} width={width} height={height} svgId={svgId} />;
 }
 
 // ─── Public component ─────────────────────────────────────────────────────────
 
-export function DiagramRenderer({ spec, width = 900, height = 540 }: DiagramRendererProps) {
+export function DiagramRenderer({ spec, width = 900, height = 540, svgId }: DiagramRendererProps) {
   switch (spec.style) {
     case 'topology_2d':
     case 'schematic':
-      return <Topology2D spec={spec} width={width} height={height} />;
+      return <Topology2D spec={spec} width={width} height={height} svgId={svgId} />;
     case 'logical_arch':
     case 'presentation':
-      return <LogicalArch spec={spec} width={width} height={height} />;
+      return <LogicalArch spec={spec} width={width} height={height} svgId={svgId} />;
     case 'site_layout':
-      return <SiteLayout spec={spec} width={width} height={height} />;
+      return <SiteLayout spec={spec} width={width} height={height} svgId={svgId} />;
     default:
-      return <GenericDiagram spec={spec} width={width} height={height} />;
+      return <GenericDiagram spec={spec} width={width} height={height} svgId={svgId} />;
   }
 }
