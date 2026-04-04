@@ -322,8 +322,12 @@ function DiagramModal({ spec, svgId, title, onClose }: { spec: DiagramSpec; svgI
       const pngUrl = canvas.toDataURL('image/png');
       const a = document.createElement('a');
       a.href = pngUrl;
-      a.download = `${title.replace(/\s+/g, '_')}.png`;
+      const safeName = title.replace(/[/\\:*?"<>|\x00]/g, '_').replace(/\s+/g, '_');
+      a.download = `${safeName}.png`;
       a.click();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
     };
     img.src = url;
   }
