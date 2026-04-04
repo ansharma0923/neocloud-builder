@@ -80,6 +80,9 @@ export default function ChatPage({ params }: { params: { chatId: string } }) {
           data.userMessage,
           data.assistantMessage,
         ]);
+        if (data.plan) {
+          setRightPanelOpen(true);
+        }
       }
     } finally {
       setSending(false);
