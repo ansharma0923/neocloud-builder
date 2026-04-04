@@ -28,7 +28,6 @@ function zoneColor(zone: DiagramZone | undefined): string {
 
 function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number; height: number }) {
   const PADDING = 32;
-  const BAND_LABEL_W = 0;
   const NODE_W = 80;
   const NODE_H = 32;
   const ROW_H = 80;
@@ -57,7 +56,7 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
   sortedZones.forEach((z, i) => zoneRow.set(z.id, i));
   const numRows = sortedZones.length || 1;
 
-  const usableW = width - PADDING * 2 - BAND_LABEL_W;
+  const usableW = width - PADDING * 2;
   const usableH = height - PADDING - HEADER_H;
   const rowHeight = Math.max(ROW_H, usableH / numRows);
 
@@ -68,7 +67,7 @@ function Topology2D({ spec, width, height }: { spec: DiagramSpec; width: number;
     const nodesInZone = zone.nodes;
     const count = nodesInZone.length;
     nodesInZone.forEach((nid, i) => {
-      const x = PADDING + BAND_LABEL_W + (usableW / (count + 1)) * (i + 1) - NODE_W / 2;
+      const x = PADDING + (usableW / (count + 1)) * (i + 1) - NODE_W / 2;
       const y = HEADER_H + PADDING / 2 + row * rowHeight + (rowHeight - NODE_H) / 2;
       nodePos.set(nid, { x, y });
     });

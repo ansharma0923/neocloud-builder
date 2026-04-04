@@ -277,7 +277,10 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
   }
 
   const diagramSpec: DiagramSpec | null =
-    artifact.type === 'generated_image' && parsedContent && 'nodes' in parsedContent
+    artifact.type === 'generated_image' &&
+    parsedContent &&
+    'nodes' in parsedContent &&
+    'style' in parsedContent
       ? (parsedContent as unknown as DiagramSpec)
       : null;
 
