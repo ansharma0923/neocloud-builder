@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { GenerateArtifactSchema } from '@/schemas/api';
 import { buildDiagramSpec } from '@/lib/artifacts/diagram-spec-builder';
 import { generateDiagramImage } from '@/lib/artifacts/image-generator';
+import { buildPlantUMLScript } from '@/lib/artifacts/plantuml-builder';
 import {
   buildExecutiveSummary,
   buildTechnicalSummary,
@@ -91,6 +92,13 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
         content = buildMarkdownExport(plan);
         title = `Export — ${plan.project.value.name}`;
         break;
+      case 'plantuml': {
+        const scriptStyle = style ?? 'topology_2d';
+        const script = buildPlantUMLScript(plan, scriptStyle);
+        content = { script, style: scriptStyle };
+        title = `PlantUML — ${plan.project.value.name} (${scriptStyle})`;
+        break;
+      }
       default:
         return NextResponse.json({ error: 'Unknown artifact type' }, { status: 400 });
     }
