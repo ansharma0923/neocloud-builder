@@ -42,6 +42,9 @@ function zoneColorFor(id: string): string {
   return DIAGRAM_PALETTE.core;
 }
 
+/** Maximum number of compute racks to render inline; additional racks are omitted for clarity. */
+const MAX_DISPLAY_RACKS = 12;
+
 /**
  * Convert a canonical plan to a structured diagram specification.
  * Never sends raw user text to image generation.
@@ -113,7 +116,7 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
   const computeItems = plan.computeInventory.value;
   const rackCount = plan.rackCount.value || 4;
   const racksPerLeaf = Math.max(1, Math.ceil(rackCount / leafCount));
-  const displayRacks = Math.min(rackCount, 12);
+  const displayRacks = Math.min(rackCount, MAX_DISPLAY_RACKS);
 
   for (let r = 0; r < displayRacks; r++) {
     const leafIndex = Math.floor(r / racksPerLeaf);

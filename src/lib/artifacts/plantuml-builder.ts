@@ -13,6 +13,9 @@ function edgeLabel(...parts: string[]): string {
   return meaningful.length > 0 ? meaningful.join(' · ') : '';
 }
 
+/** Maximum number of racks to render inline; additional racks are summarised as a note. */
+const MAX_DISPLAY_RACKS = 12;
+
 // ─── Mandatory color palette (skinparam values) ───────────────────────────────
 // Colors match the fixed design-system palette. Do not change.
 
@@ -107,8 +110,8 @@ export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
   const computeLabel  = [na(firstCompute?.vendor), na(firstCompute?.model ?? firstCompute?.type)]
     .filter(Boolean).join(' ') || 'Compute';
 
-  const displayRacks  = Math.min(rackCount, 12);
-  const extraRacks    = rackCount > 12 ? rackCount - 12 : 0;
+  const displayRacks  = Math.min(rackCount, MAX_DISPLAY_RACKS);
+  const extraRacks    = rackCount > MAX_DISPLAY_RACKS ? rackCount - MAX_DISPLAY_RACKS : 0;
 
   const spineComponents = Array.from({ length: spines }, (_, i) => {
     const portInfo = portsPerSpine ? `\\n${portsPerSpine} ports` : '';
