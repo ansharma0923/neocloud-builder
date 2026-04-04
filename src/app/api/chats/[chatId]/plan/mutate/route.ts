@@ -4,13 +4,13 @@ import { prisma } from '@/lib/db/client';
 import { MutatePlanSchema } from '@/schemas/api';
 import { createChatCompletion } from '@/lib/ai/model-router';
 import { mutatePlan } from '@/lib/planning/plan-mutator';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 import type { CanonicalPlanState, MutationInstruction } from '@/types/planning';
 
 export async function POST(req: NextRequest, { params }: { params: { chatId: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const body = await req.json().catch(() => ({}));
   const parsed = MutatePlanSchema.safeParse(body);

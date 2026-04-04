@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
 import { getStorageAdapter } from '@/lib/files/storage';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: { chatId: string; attachmentId: string } }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const attachment = await prisma.attachment.findFirst({
     where: { id: params.attachmentId, chatId: params.chatId, userId },

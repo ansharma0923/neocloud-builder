@@ -1,15 +1,13 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/db/client';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 
 export default async function HomePage() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
+  await ensureLocalUser();
 
   const lastChat = await prisma.chat.findFirst({
-    where: { userId: session.user.id as string, deletedAt: null },
+    where: { userId: LOCAL_USER_ID, deletedAt: null },
     orderBy: { updatedAt: 'desc' },
   });
 
@@ -19,7 +17,7 @@ export default async function HomePage() {
 
   const newChat = await prisma.chat.create({
     data: {
-      userId: session.user.id as string,
+      userId: LOCAL_USER_ID,
       title: 'New Chat',
     },
   });

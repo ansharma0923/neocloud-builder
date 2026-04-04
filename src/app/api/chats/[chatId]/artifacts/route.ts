@@ -11,13 +11,13 @@ import {
   buildCostSummary,
   buildMarkdownExport,
 } from '@/lib/artifacts/artifact-builders';
-import { auth } from '@/app/api/auth/[...nextauth]/route';
+import { LOCAL_USER_ID } from '@/lib/auth/local-user';
+import { ensureLocalUser } from '@/lib/db/seed-local-user';
 import type { CanonicalPlanState, DiagramStyle } from '@/types/planning';
 
 export async function GET(req: NextRequest, { params }: { params: { chatId: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const chat = await prisma.chat.findFirst({ where: { id: params.chatId, userId, deletedAt: null } });
   if (!chat) return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
@@ -31,9 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: { chatId: stri
 }
 
 export async function POST(req: NextRequest, { params }: { params: { chatId: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userId = session.user.id as string;
+  await ensureLocalUser();
+  const userId = LOCAL_USER_ID;
 
   const body = await req.json().catch(() => ({}));
   const parsed = GenerateArtifactSchema.safeParse(body);
