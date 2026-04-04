@@ -47,7 +47,15 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
     where: { chatId: params.chatId },
   });
 
-  const currentPlan = canonicalPlan ? (canonicalPlan.state as unknown as CanonicalPlanState) : null;
+  const currentPlan = canonicalPlan
+    ? (() => {
+        try {
+          return JSON.parse(canonicalPlan.state as string) as CanonicalPlanState;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
 
   // Get relevant file context
   const fileChunks = await retrieveRelevantChunks(parsed.data.content, params.chatId, 5).catch(() => []);
@@ -101,12 +109,12 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
       modelId: aiResult.metadata.model,
       tokenCount: aiResult.metadata.totalTokens,
       latencyMs,
-      metadata: {
+      metadata: JSON.stringify({
         promptTokens: aiResult.metadata.promptTokens,
         completionTokens: aiResult.metadata.completionTokens,
         planVersion: planResult?.plan.version,
         planUpdated: !!planResult,
-      },
+      }),
     },
   });
 
@@ -118,7 +126,7 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
         where: { chatId: params.chatId },
         data: {
           version: planResult.plan.version,
-          state: planData,
+          state: JSON.stringify(planData),
         },
       });
     } else {
@@ -127,7 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
           id: nanoid(),
           chatId: params.chatId,
           version: planResult.plan.version,
-          state: planData,
+          state: JSON.stringify(planData),
         },
       });
     }

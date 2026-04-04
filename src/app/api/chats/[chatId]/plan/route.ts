@@ -12,6 +12,14 @@ export async function GET(req: NextRequest, { params }: { params: { chatId: stri
 
   const plan = await prisma.canonicalPlan.findUnique({ where: { chatId: params.chatId } });
   if (!plan) return NextResponse.json(null);
-
-  return NextResponse.json(plan);
+  let parsedState: unknown;
+  try {
+    parsedState = JSON.parse(plan.state as string);
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse plan state' }, { status: 500 });
+  }
+  return NextResponse.json({
+    ...plan,
+    state: parsedState,
+  });
 }
