@@ -40,32 +40,38 @@ export function createProvenanceField<T>(
   return { value, provenance };
 }
 
-const PLAN_BUILDER_SYSTEM_PROMPT = `You are a technical planner for AI data centers and neoclouds.
+const PLAN_BUILDER_SYSTEM_PROMPT = `You are a senior AI data center architect and technical planner for neoclouds.
 
-Build a structured plan from the provided intent and assumptions. 
+Build a structured canonical plan from the provided intent and assumptions.
 
 CRITICAL RULES:
-- Do not hardcode any vendor specs, pricing, GPU performance data, or proprietary information
-- Mark all inferred values as "llm_estimate" or "llm_inference" 
-- Mark all user-provided values as "user_input"
-- Be conservative with estimates and clearly note uncertainty
-- Return a valid JSON plan structure
+1. You MUST fill EVERY field with a concrete, reasoned engineering value. NEVER return null for any field that has a standard default.
+2. If the user has not specified a value, use current industry best-practices for AI data centers (Arista leaf-spine, NVIDIA H100 SXM5, liquid cooling, etc.).
+3. For GPU compute: default to NVIDIA H100 SXM5, 8 GPUs per rack, ~10 kW/rack total power unless specified.
+4. For network (leaf-spine): use 100GbE downlinks, 400GbE uplinks, QSFP-DD transceivers, SMF unless specified.
+5. For leaf switch ports: 48×100GbE downlinks + 8×400GbE uplinks is the Arista standard default.
+6. For spine switch ports: 32×400GbE is the Arista standard default.
+7. For cooling: default to Direct Liquid Cooling (DLC), PUE 1.3, WUE 1.2 for AI workloads.
+8. For power redundancy: 2N is the standard for AI data centers.
+9. All estimated values MUST be marked "llm_estimate" in fieldSources.
+10. NEVER use generic placeholder text like "Generic High Performance Model" — use real model names.
 
-Return a JSON object representing the plan fields you can populate:
+Return a JSON object:
 {
-  "project": { "name": string, "description": string, "phase": string },
-  "site": { "city": string, "state": string, "country": string },
+  "project": { "name": string, "description": string, "phase": "design" },
+  "site": { "city": string, "state": string, "country": string, "region": string },
   "rackCount": number,
   "rackPowerDensity": number,
   "totalPower": number,
-  "coolingAssumptions": { "type": string, "pue": number, "notes": string },
-  "networkArchitecture": { "architecture": string, "oversubscriptionRatio": string, "notes": string },
-  "redundancyAssumptions": { "powerRedundancy": string, "networkRedundancy": string, "storageRedundancy": string },
-  "computeInventory": [{ "id": string, "type": string, "vendor": string, "model": string, "quantity": number, "perRack": number }],
-  "storageInventory": [{ "id": string, "type": string, "capacityTB": number, "quantity": number }],
-  "topologyRelationships": { "spines": number, "leaves": number, "tier": string },
+  "coolingAssumptions": { "type": string, "pue": number, "waterUsageEffectiveness": number, "notes": string },
+  "networkArchitecture": { "architecture": "leaf-spine", "oversubscriptionRatio": "1:1", "uplinks": "100GbE", "internalBandwidth": "400GbE", "notes": string },
+  "redundancyAssumptions": { "powerRedundancy": "2N", "networkRedundancy": "dual-homed", "storageRedundancy": "RAID-6" },
+  "computeInventory": [{ "id": string, "type": "gpu", "vendor": string, "model": string, "quantity": number, "perRack": number, "notes": string }],
+  "storageInventory": [{ "id": string, "type": "nvme", "vendor": string, "model": string, "capacityTB": number, "quantity": number }],
+  "topologyRelationships": { "spines": number, "leaves": number, "portsPerLeaf": string, "portsPerSpine": string, "tier": string },
+  "opticalOrCopperAssumptions": { "type": "optical", "cableStandard": "SMF-OS2", "transceiverType": "QSFP-DD" },
   "openQuestions": [string],
-  "risks": [{ "id": string, "category": string, "description": string, "severity": string }],
+  "risks": [{ "id": string, "category": string, "description": string, "severity": "low"|"medium"|"high"|"critical" }],
   "notes": [string],
   "fieldSources": { "fieldName": "user_input" | "llm_estimate" | "llm_inference" | "system_default" }
 }`;
@@ -163,9 +169,22 @@ export async function buildPlan(
         getSource('storageInventory')
       ),
       managementServices: createProvenanceField([], 'system_default'),
-      opticalOrCopperAssumptions: createProvenanceField({}, 'llm_estimate'),
+      opticalOrCopperAssumptions: createProvenanceField(
+        (parsed.opticalOrCopperAssumptions as Record<string, unknown>) ?? {
+          type: 'optical',
+          cableStandard: 'SMF-OS2',
+          transceiverType: 'QSFP-DD',
+        },
+        getSource('opticalOrCopperAssumptions')
+      ),
       topologyRelationships: createProvenanceField(
-        (parsed.topologyRelationships as Record<string, unknown>) ?? {},
+        (parsed.topologyRelationships as Record<string, unknown>) ?? {
+          spines: 2,
+          leaves: 4,
+          portsPerLeaf: '48×100GbE + 8×400GbE',
+          portsPerSpine: '32×400GbE',
+          tier: 'Tier-3',
+        },
         getSource('topologyRelationships')
       ),
       bom: {

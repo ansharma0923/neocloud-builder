@@ -242,6 +242,7 @@ export interface DiagramEdge {
   target: string;
   label?: string;
   type?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DiagramZone {

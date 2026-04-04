@@ -395,6 +395,11 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
       ? (parsedContent.script as string)
       : null;
 
+  const markdownText: string | null =
+    parsedContent && 'text' in parsedContent && typeof parsedContent.text === 'string'
+      ? parsedContent.text
+      : null;
+
   const svgId = `diagram-svg-${artifact.id}`;
 
   return (
@@ -418,6 +423,9 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
       )}
       {plantUMLScript && (
         <PlantUMLCard script={plantUMLScript} title={artifact.title} />
+      )}
+      {markdownText && !diagramSpec && !plantUMLScript && (
+        <MarkdownArtifactCard text={markdownText} title={artifact.title} />
       )}
     </div>
   );
@@ -465,6 +473,65 @@ function PlantUMLCard({ script, title }: { script: string; title: string }) {
       <pre className="text-[9px] text-[#6b7280] bg-[#0a0a0a] rounded p-2 overflow-x-auto max-h-40 leading-relaxed font-mono whitespace-pre">
         {script.slice(0, 400)}{script.length > 400 ? '\n...' : ''}
       </pre>
+    </div>
+  );
+}
+
+function MarkdownArtifactCard({ text, title }: { text: string; title: string }) {
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const PREVIEW_LEN = 500;
+  const preview = text.slice(0, PREVIEW_LEN);
+  const hasMore = text.length > PREVIEW_LEN;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleDownload() {
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = title.replace(/[/\\:*?"<>|\x00]/g, '_').replace(/\s+/g, '_');
+    a.download = `${safeName}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1a1a1a] text-xs text-[#a3a3a3] hover:text-[#f5f5f5] hover:bg-[#222222] transition-colors"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        <button
+          onClick={handleDownload}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1a1a1a] text-xs text-[#a3a3a3] hover:text-[#f5f5f5] hover:bg-[#222222] transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          .md
+        </button>
+      </div>
+      <pre className="text-[9px] text-[#a3a3a3] bg-[#0a0a0a] rounded p-2 overflow-x-auto max-h-48 leading-relaxed font-mono whitespace-pre-wrap">
+        {expanded ? text : preview}
+        {hasMore && !expanded ? '\n...' : ''}
+      </pre>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-[10px] text-[#525252] hover:text-[#a3a3a3] transition-colors"
+        >
+          {expanded ? 'Show less ▲' : 'Show more ▼'}
+        </button>
+      )}
     </div>
   );
 }

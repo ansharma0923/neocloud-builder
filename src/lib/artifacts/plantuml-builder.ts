@@ -1,8 +1,28 @@
 import type { CanonicalPlanState } from '@/types/planning';
 
-function na(value: unknown): string {
-  if (value === null || value === undefined || value === '') return 'N/A';
+// ─── Mandatory color palette (never change) ───────────────────────────────────
+const C = {
+  spine:      '#2563EB',   // AI Fabric / Spine switches
+  storage:    '#16A34A',   // Storage
+  frontend:   '#06B6D4',   // Front End / Services
+  management: '#F59E0B',   // Management
+  security:   '#EF4444',   // Security / OOB
+  compute:    '#60A5FA',   // CPU / General Compute
+  reserved:   '#E5E7EB',   // Reserved / Empty
+  tpu:        '#9333EA',   // Google TPU
+  nvidia:     '#F97316',   // NVIDIA Rubin
+  amd:        '#EAB308',   // AMD MI400X
+} as const;
+
+/** Return a string value, or a sensible engineering default. NEVER returns 'N/A'. */
+function def(value: unknown, fallback: string): string {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return fallback;
   return String(value);
+}
+
+/** Strip leading '#' for use inside PlantUML color expressions. */
+function hex(color: string): string {
+  return color.replace('#', '');
 }
 
 export function buildPlantUMLScript(plan: CanonicalPlanState, style: string): string {
@@ -15,218 +35,232 @@ export function buildPlantUMLScript(plan: CanonicalPlanState, style: string): st
 }
 
 export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
-  const projectName = na(plan.project?.value?.name);
-  const topology = plan.topologyRelationships?.value ?? {};
-  const connectivity = plan.opticalOrCopperAssumptions?.value ?? {};
-  const network = plan.networkArchitecture?.value ?? {};
-  const compute = plan.computeInventory?.value ?? [];
-  const rackCount = plan.rackCount?.value ?? 0;
-  const rackCountDisplay = na(plan.rackCount?.value);
-  const rackPowerDensity = na(plan.rackPowerDensity?.value);
+  const projectName   = def(plan.project?.value?.name, 'AI Data Center');
+  const topology      = plan.topologyRelationships?.value ?? {};
+  const connectivity  = plan.opticalOrCopperAssumptions?.value ?? {};
+  const network       = plan.networkArchitecture?.value ?? {};
+  const compute       = plan.computeInventory?.value ?? [];
+  const rackCount     = plan.rackCount?.value ?? 0;
 
-  const spines = topology.spines ?? 2;
-  const leaves = topology.leaves ?? 4;
-  const portsPerSpine = na(topology.portsPerSpine);
-  const portsPerLeaf = na(topology.portsPerLeaf);
-  const oversubRatio = na(network.oversubscriptionRatio);
-  const internalBandwidth = na(network.internalBandwidth);
-  const transceiverType = na(connectivity.transceiverType);
-  const cableStandard = na(connectivity.cableStandard);
+  const spines        = topology.spines ?? 2;
+  const leaves        = topology.leaves ?? 4;
+  // Use sensible Arista defaults when not populated
+  const portsPerSpine  = def(topology.portsPerSpine, '32×400GbE');
+  const portsPerLeaf   = def(topology.portsPerLeaf,  '48×100GbE + 8×400GbE');
+  const uplinkBW       = def(network.internalBandwidth, '400GbE');
+  const downlinkBW     = def(network.uplinks, '100GbE');
+  const transceiverType = def(connectivity.transceiverType, 'QSFP-DD');
+  const cableStandard   = def(connectivity.cableStandard, 'SMF');
 
-  const firstCompute = compute[0];
-  const computeVendor = na(firstCompute?.vendor);
-  const computeModel = na(firstCompute?.model ?? firstCompute?.type);
-  const perRackGPUs = na(firstCompute?.perRack);
+  const firstCompute   = compute[0];
+  const computeVendor  = def(firstCompute?.vendor, 'NVIDIA');
+  const computeModel   = def(firstCompute?.model ?? firstCompute?.type, 'H100 SXM5');
+  const perRackGPUs    = def(firstCompute?.perRack, '8');
+  const rackPowerKw    = def(plan.rackPowerDensity?.value, '10');
 
-  const displayRacks = Math.min(rackCount, 16);
-  const extraRacks = rackCount > 16 ? rackCount - 16 : 0;
-
-  const spineComponents = Array.from({ length: spines }, (_, i) => {
-    const id = `spine_${i + 1}`;
-    return `  component "Spine-${i + 1}\\n${portsPerSpine} ports\\n${internalBandwidth} uplinks" as ${id} <<spine>>`;
-  });
-
-  const leafComponents = Array.from({ length: leaves }, (_, i) => {
-    const id = `leaf_${i + 1}`;
-    return `  component "Leaf-${i + 1}\\n${portsPerLeaf} ports\\nOversubscription: ${oversubRatio}" as ${id} <<leaf>>`;
-  });
-
-  const rackComponents = Array.from({ length: displayRacks }, (_, i) => {
-    const id = `rack_${i + 1}`;
-    return `  component "Rack-${i + 1}\\n${computeVendor} ${computeModel}\\n${perRackGPUs} GPUs\\n${rackPowerDensity} kW" as ${id} <<rack>>`;
-  });
-
-  if (extraRacks > 0) {
-    rackComponents.push(`  note "... and ${extraRacks} more racks" as extra_racks_note`);
-  }
-
-  const spineLeafEdges: string[] = [];
-  for (let s = 1; s <= spines; s++) {
-    for (let l = 1; l <= leaves; l++) {
-      spineLeafEdges.push(`spine_${s} --> leaf_${l} : "${internalBandwidth}\\n${transceiverType}"`);
-    }
-  }
-
-  const leafRackEdges: string[] = [];
-  for (let l = 1; l <= leaves; l++) {
-    const racksPerLeaf = Math.ceil(displayRacks / leaves);
-    for (let r = 0; r < racksPerLeaf; r++) {
-      const rackIdx = (l - 1) * racksPerLeaf + r + 1;
-      if (rackIdx <= displayRacks) {
-        leafRackEdges.push(`leaf_${l} --> rack_${rackIdx} : "${internalBandwidth}\\n${cableStandard}"`);
-      }
-    }
-  }
+  const displayRacks   = Math.min(rackCount || 8, 8);
+  const extraRacks     = rackCount > 8 ? rackCount - 8 : 0;
+  const leavesPerSpine = Math.ceil(leaves / spines);
 
   const lines: string[] = [
     '@startuml',
     '',
-    'skinparam backgroundColor #0a0a0a',
-    'skinparam defaultFontColor #a3a3a3',
+    'left to right direction',
+    '',
+    'skinparam backgroundColor #F8FAFC',
+    'skinparam defaultFontColor #1E293B',
     'skinparam defaultFontName "Helvetica"',
+    'skinparam defaultFontSize 11',
     'skinparam component {',
-    '  BackgroundColor<<spine>> #1e3a5f',
-    '  BorderColor<<spine>> #4f8ef7',
-    '  FontColor<<spine>> #93c5fd',
-    '  BackgroundColor<<leaf>> #0e3a2f',
-    '  BorderColor<<leaf>> #10b981',
-    '  FontColor<<leaf>> #6ee7b7',
-    '  BackgroundColor<<rack>> #2d1b4e',
-    '  BorderColor<<rack>> #8b5cf6',
-    '  FontColor<<rack>> #c4b5fd',
+    `  BackgroundColor<<spine>> ${C.spine}`,
+    '  BorderColor<<spine>> #1E40AF',
+    '  FontColor<<spine>> #FFFFFF',
+    `  BackgroundColor<<leaf>> ${C.compute}`,
+    '  BorderColor<<leaf>> #2563EB',
+    '  FontColor<<leaf>> #1E293B',
+    '  BackgroundColor<<rack>> #DBEAFE',
+    '  BorderColor<<rack>> #93C5FD',
+    '  FontColor<<rack>> #1E3A8A',
     '}',
-    'skinparam ArrowColor #4b5563',
-    'skinparam NoteBackgroundColor #1a1a1a',
-    'skinparam NoteBorderColor #2a2a2a',
-    'skinparam NoteFontColor #6b7280',
-    'skinparam PackageBackgroundColor #111111',
-    'skinparam PackageBorderColor #2a2a2a',
-    'skinparam PackageFontColor #f5f5f5',
+    `skinparam ArrowColor ${C.spine}`,
+    'skinparam ArrowFontColor #334155',
+    'skinparam ArrowFontSize 9',
+    'skinparam PackageBackgroundColor #F1F5F9',
+    'skinparam PackageBorderColor #CBD5E1',
+    'skinparam PackageFontColor #334155',
+    'skinparam NoteBackgroundColor #FEF9C3',
+    'skinparam NoteBorderColor #FDE047',
+    'skinparam NoteFontColor #713F12',
     '',
     `title ${projectName} — Network Topology`,
     '',
+    // ─── Spine layer ──────────────────────────────────────────────────────────
     'package "Spine Layer" {',
-    ...spineComponents,
-    '}',
-    '',
-    'package "Leaf Layer" {',
-    ...leafComponents,
-    '}',
-    '',
-    'package "Compute Layer" {',
-    ...rackComponents,
-    '}',
-    '',
-    ...spineLeafEdges,
-    '',
-    ...leafRackEdges,
-    '',
-    'legend right',
-    '  |= Color |= Layer |',
-    '  |<#4f8ef7> | Spine (blue) |',
-    '  |<#10b981> | Leaf (green) |',
-    '  |<#8b5cf6> | Rack (purple) |',
-    `  Spines: ${spines}  |  Leaves: ${leaves}  |  Racks: ${rackCountDisplay}`,
-    `  Internal Bandwidth: ${internalBandwidth}`,
-    `  Transceiver: ${transceiverType}  |  Cable: ${cableStandard}`,
+  ];
+
+  for (let i = 0; i < spines; i++) {
+    lines.push(`  component "Spine-${i + 1}\\n${portsPerSpine}" as spine_${i + 1} <<spine>>`);
+  }
+  lines.push('}', '');
+
+  // ─── Leaf packages grouped by spine domain ────────────────────────────────
+  for (let s = 0; s < spines; s++) {
+    const domainLeaves: number[] = [];
+    for (let l = 0; l < leavesPerSpine; l++) {
+      const leafIdx = s * leavesPerSpine + l + 1;
+      if (leafIdx <= leaves) domainLeaves.push(leafIdx);
+    }
+    if (domainLeaves.length === 0) continue;
+    lines.push(`package "Spine-${s + 1} Domain" {`);
+    for (const li of domainLeaves) {
+      lines.push(`  component "Leaf-${li}\\n${portsPerLeaf}" as leaf_${li} <<leaf>>`);
+    }
+    lines.push('}', '');
+  }
+
+  // ─── Compute racks ────────────────────────────────────────────────────────
+  lines.push('package "Compute Layer" {');
+  for (let r = 0; r < displayRacks; r++) {
+    lines.push(`  component "Rack-${r + 1}\\n${computeVendor} ${computeModel}\\n${perRackGPUs}× GPU / ${rackPowerKw} kW" as rack_${r + 1} <<rack>>`);
+  }
+  if (extraRacks > 0) {
+    lines.push(`  note "...and ${extraRacks} more racks" as extra_note`);
+  }
+  lines.push('}', '');
+
+  // ─── Spine → Leaf edges (blue / AI fabric, labeled with uplink bandwidth) ─
+  for (let s = 1; s <= spines; s++) {
+    for (let l = 1; l <= leaves; l++) {
+      lines.push(`spine_${s} -[#${hex(C.spine)}]-> leaf_${l} : "${uplinkBW}"`);
+    }
+  }
+  lines.push('');
+
+  // ─── Leaf → Rack edges (light blue / compute downlink) ────────────────────
+  const racksPerLeaf = Math.max(1, Math.ceil(displayRacks / leaves));
+  for (let l = 1; l <= leaves; l++) {
+    for (let r = 0; r < racksPerLeaf; r++) {
+      const rackIdx = (l - 1) * racksPerLeaf + r + 1;
+      if (rackIdx <= displayRacks) {
+        lines.push(`leaf_${l} -[#${hex(C.compute)}]-> rack_${rackIdx} : "${downlinkBW}"`);
+      }
+    }
+  }
+  lines.push('');
+
+  // ─── Legend ───────────────────────────────────────────────────────────────
+  lines.push(
+    'legend bottom',
+    '  **Legend — NeoCloud Network Topology**',
+    '  |= Component |= Color |= Role |',
+    `  |<${C.spine}> Spine | Blue | AI Fabric / Spine Switches |`,
+    `  |<${C.compute}> Leaf | Light Blue | Leaf Switches |`,
+    `  |<#DBEAFE> Rack | Steel | Compute Racks |`,
+    '  |= Link |= Color |= Bandwidth |',
+    `  | Spine ↔ Leaf | Blue | ${uplinkBW} (AI Fabric Uplink) |`,
+    `  | Leaf ↔ Rack | Light Blue | ${downlinkBW} (Compute Downlink) |`,
+    `  Spines: ${spines}   Leaves: ${leaves}   Racks: ${rackCount || displayRacks}   Transceiver: ${transceiverType}   Cable: ${cableStandard}`,
     'endlegend',
     '',
     '@enduml',
-  ];
+  );
 
   return lines.join('\n');
 }
 
 export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
-  const projectName = na(plan.project?.value?.name);
-  const network = plan.networkArchitecture?.value ?? {};
-  const cooling = plan.coolingAssumptions?.value ?? {};
-  const redundancy = plan.redundancyAssumptions?.value ?? {};
-  const topology = plan.topologyRelationships?.value ?? {};
-  const connectivity = plan.opticalOrCopperAssumptions?.value ?? {};
-  const compute = plan.computeInventory?.value ?? [];
-  const storage = plan.storageInventory?.value ?? [];
-  const services = plan.managementServices?.value ?? [];
-  const rackCount = na(plan.rackCount?.value);
-  const totalPower = na(plan.totalPower?.value);
+  const projectName    = def(plan.project?.value?.name, 'AI Data Center');
+  const network        = plan.networkArchitecture?.value ?? {};
+  const cooling        = plan.coolingAssumptions?.value ?? {};
+  const redundancy     = plan.redundancyAssumptions?.value ?? {};
+  const topology       = plan.topologyRelationships?.value ?? {};
+  const connectivity   = plan.opticalOrCopperAssumptions?.value ?? {};
+  const compute        = plan.computeInventory?.value ?? [];
+  const storage        = plan.storageInventory?.value ?? [];
+  const services       = plan.managementServices?.value ?? [];
+  const rackCount      = def(plan.rackCount?.value, '0');
+  const totalPower     = def(plan.totalPower?.value, 'TBD');
 
-  const arch = na(network.architecture);
-  const oversubRatio = na(network.oversubscriptionRatio);
-  const uplinks = na(network.uplinks);
-  const internalBandwidth = na(network.internalBandwidth);
-  const coolingType = na(cooling.type);
-  const pue = na(cooling.pue);
-  const wue = na(cooling.waterUsageEffectiveness);
-  const powerRedundancy = na(redundancy.powerRedundancy);
-  const storageRedundancy = na(redundancy.storageRedundancy);
-  const spines = na(topology.spines);
-  const leaves = na(topology.leaves);
-  const portsPerLeaf = na(topology.portsPerLeaf);
-  const portsPerSpine = na(topology.portsPerSpine);
-  const tier = na(topology.tier);
+  const arch           = def(network.architecture, 'Leaf-Spine');
+  const oversubRatio   = def(network.oversubscriptionRatio, '1:1');
+  const uplinkBW       = def(network.internalBandwidth, '400GbE');
+  const downlinkBW     = def(network.uplinks, '100GbE');
+  const coolingType    = def(cooling.type, 'Direct Liquid Cooling');
+  const pue            = def(cooling.pue, '1.3');
+  const wue            = def(cooling.waterUsageEffectiveness, '1.2');
+  const powerRedundancy = def(redundancy.powerRedundancy, '2N');
+  const storageRedundancy = def(redundancy.storageRedundancy, 'RAID-6');
+  const spines         = def(topology.spines, '2');
+  const leaves         = def(topology.leaves, '4');
+  const portsPerLeaf   = def(topology.portsPerLeaf, '48×100GbE');
+  const portsPerSpine  = def(topology.portsPerSpine, '32×400GbE');
+  const tier           = def(topology.tier, 'Tier-3');
+  const transceiverType = def(connectivity.transceiverType, 'QSFP-DD');
 
   const serviceNames = services.length > 0
-    ? services.map(s => `    [${na(s.name)}]`).join('\n')
-    : '    [No management services defined]';
+    ? services.map(s => `    [${def(s.name, 'Service')}]`).join('\n')
+    : '    [Grafana / Prometheus]\n    [Ansible / Terraform]\n    [IPAM / DCIM]';
 
   const computeItems = compute.length > 0
-    ? compute.map(c => `    [${na(c.vendor)} ${na(c.model ?? c.type)} x${na(c.quantity)} / ${na(c.perRack)}/rack]`).join('\n')
-    : '    [No compute inventory defined]';
+    ? compute.map(c => `    [${def(c.vendor, 'NVIDIA')} ${def(c.model ?? c.type, 'H100 SXM5')} ×${def(c.quantity, '1')} / ${def(c.perRack, '8')}/rack]`).join('\n')
+    : '    [NVIDIA H100 SXM5 / 8 per rack]';
 
   const storageItems = storage.length > 0
-    ? storage.map(s => `    [${na(s.type)} ${na(s.vendor)} ${na(s.model)} ${na(s.capacityTB)}TB]`).join('\n')
-    : '    [No storage inventory defined]';
+    ? storage.map(s => `    [${def(s.type, 'NVMe')} ${def(s.vendor, '')} ${def(s.model, '')} ${def(s.capacityTB, '')}TB]`).join('\n')
+    : '    [NVMe / All-Flash Storage]';
 
   const lines: string[] = [
     '@startuml',
     '',
-    'skinparam backgroundColor #0a0a0a',
-    'skinparam defaultFontColor #a3a3a3',
+    'skinparam backgroundColor #F8FAFC',
+    'skinparam defaultFontColor #1E293B',
     'skinparam defaultFontName "Helvetica"',
+    'skinparam defaultFontSize 11',
     'skinparam node {',
-    '  BackgroundColor #1a1a2e',
-    '  BorderColor #4b5563',
-    '  FontColor #f5f5f5',
+    `  BackgroundColor #EFF6FF`,
+    `  BorderColor ${C.spine}`,
+    '  FontColor #1E293B',
     '}',
     'skinparam frame {',
-    '  BackgroundColor #111111',
-    '  BorderColor #2a2a2a',
-    '  FontColor #f5f5f5',
+    '  BackgroundColor #F1F5F9',
+    '  BorderColor #CBD5E1',
+    '  FontColor #334155',
     '}',
     'skinparam database {',
-    '  BackgroundColor #0c2340',
-    '  BorderColor #3b82f6',
-    '  FontColor #93c5fd',
+    `  BackgroundColor #F0FDF4`,
+    `  BorderColor ${C.storage}`,
+    '  FontColor #14532D',
     '}',
-    'skinparam ArrowColor #4b5563',
-    'skinparam NoteBackgroundColor #1a1a1a',
-    'skinparam NoteBorderColor #2a2a2a',
-    'skinparam NoteFontColor #6b7280',
+    `skinparam ArrowColor ${C.spine}`,
+    'skinparam ArrowFontColor #334155',
+    'skinparam ArrowFontSize 9',
+    'skinparam NoteBackgroundColor #FEF9C3',
+    'skinparam NoteBorderColor #FDE047',
     '',
     `title ${projectName} — Logical Architecture`,
     '',
-    'frame "Management" {',
-    '  node "Management Services" as mgmt_node #2d1654 {',
+    'frame "Management Plane" {',
+    `  node "Management Services" as mgmt_node #FEF3C7 {`,
     serviceNames,
     '  }',
     '}',
     '',
     'frame "Control Plane" {',
-    '  node "Network Architecture" as ctrl_node #2a1a00 {',
-    `    [Architecture: ${arch}]`,
+    `  node "Network Control" as ctrl_node #EFF6FF {`,
+    `    [Arch: ${arch}]`,
     `    [Oversubscription: ${oversubRatio}]`,
-    `    [Uplinks: ${uplinks}]`,
+    `    [Uplinks: ${uplinkBW}]`,
     '  }',
     '}',
     '',
-    'frame "Compute" {',
-    `  node "Compute (${rackCount} racks)" as compute_node #0a2e1a {`,
+    'frame "Compute Plane" {',
+    `  node "Compute (${rackCount} racks)" as compute_node #F0FDF4 {`,
     computeItems,
     `    [Total Power: ${totalPower} kW]`,
     '  }',
     '}',
     '',
-    'frame "Storage" {',
+    'frame "Storage Plane" {',
     '  database "Storage Inventory" as storage_db {',
     storageItems,
     `    [Redundancy: ${storageRedundancy}]`,
@@ -234,42 +268,47 @@ export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
     '}',
     '',
     'frame "Network Fabric" {',
-    '  node "Topology" as net_node #0c1d3a {',
-    `    [Tier: ${tier}]`,
+    `  node "Topology" as net_node #EFF6FF {`,
+    `    [${tier} Leaf-Spine]`,
     `    [Spines: ${spines} / Leaves: ${leaves}]`,
-    `    [Ports/Leaf: ${portsPerLeaf} / Ports/Spine: ${portsPerSpine}]`,
+    `    [Ports/Leaf: ${portsPerLeaf}]`,
+    `    [Ports/Spine: ${portsPerSpine}]`,
     '  }',
     '}',
     '',
     'frame "Infrastructure" {',
-    '  node "Cooling" as cooling_node #1a1f2e {',
+    `  node "Cooling" as cooling_node #F0F9FF {`,
     `    [Type: ${coolingType}]`,
-    `    [PUE: ${pue}]`,
-    `    [WUE: ${wue}]`,
+    `    [PUE: ${pue}  WUE: ${wue}]`,
     '  }',
-    '  node "Power" as power_node #1a1f2e {',
+    `  node "Power" as power_node #FFF7ED {`,
     `    [Total: ${totalPower} kW]`,
     `    [Redundancy: ${powerRedundancy}]`,
     '  }',
     '}',
     '',
-    'mgmt_node --> ctrl_node : "management traffic"',
-    'ctrl_node --> compute_node : "orchestration"',
-    `compute_node --> storage_db : "${internalBandwidth} data fabric"`,
-    `storage_db --> storage_db : "${storageRedundancy} storage"`,
-    `power_node --> compute_node : "${totalPower} kW / ${powerRedundancy}"`,
-    `cooling_node --> compute_node : "${coolingType} / PUE ${pue}"`,
+    `mgmt_node -[#${hex(C.management)}]-> ctrl_node : "25G mgmt"`,
+    `ctrl_node -[#${hex(C.spine)}]-> compute_node : "orchestration"`,
+    `compute_node -[#${hex(C.spine)}]-> net_node : "${uplinkBW} AI fabric"`,
+    `compute_node -[#${hex(C.storage)}]-> storage_db : "${downlinkBW} storage"`,
+    `power_node -[#${hex(C.management)}]-> compute_node : "${totalPower} kW / ${powerRedundancy}"`,
+    `cooling_node -[#${hex(C.frontend)}]-> compute_node : "${coolingType} / PUE ${pue}"`,
     '',
-    'legend right',
-    '  |= Frame |= Description |',
-    '  | Management | Orchestration & monitoring services |',
-    '  | Control Plane | Network architecture & routing |',
-    '  | Compute | GPU/CPU racks & processing |',
+    'legend bottom',
+    '  **Legend — Logical Architecture**',
+    '  |= Plane |= Description |',
+    '  | Management | Orchestration & monitoring |',
+    '  | Control | Network architecture & routing |',
+    '  | Compute | GPU/CPU racks |',
     '  | Storage | Persistent data layer |',
-    '  | Network Fabric | Spine-leaf switching fabric |',
-    '  | Infrastructure | Power & cooling systems |',
-    `  Total Power: ${totalPower} kW  |  Racks: ${rackCount}`,
-    `  PUE: ${pue}  |  Redundancy: ${powerRedundancy}`,
+    '  | Network | Spine-leaf switching fabric |',
+    '  | Infrastructure | Power & cooling |',
+    '  |= Link |= Color |= Purpose |',
+    `  | Blue | ${C.spine} | AI Fabric / Spine |`,
+    `  | Green | ${C.storage} | Storage |`,
+    `  | Cyan | ${C.frontend} | Cooling / Front-End |`,
+    `  | Orange | ${C.management} | Management |`,
+    `  Racks: ${rackCount}   Power: ${totalPower} kW   PUE: ${pue}   Redundancy: ${powerRedundancy}   Transceiver: ${transceiverType}`,
     'endlegend',
     '',
     '@enduml',
@@ -279,107 +318,117 @@ export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
 }
 
 export function buildSiteLayoutPlantUML(plan: CanonicalPlanState): string {
-  const projectName = na(plan.project?.value?.name);
-  const cooling = plan.coolingAssumptions?.value ?? {};
-  const redundancy = plan.redundancyAssumptions?.value ?? {};
-  const network = plan.networkArchitecture?.value ?? {};
-  const topology = plan.topologyRelationships?.value ?? {};
-  const connectivity = plan.opticalOrCopperAssumptions?.value ?? {};
-  const compute = plan.computeInventory?.value ?? [];
-  const rackCount = plan.rackCount?.value ?? 0;
-  const rackCountDisplay = na(plan.rackCount?.value);
-  const totalPower = na(plan.totalPower?.value);
+  const projectName    = def(plan.project?.value?.name, 'AI Data Center');
+  const cooling        = plan.coolingAssumptions?.value ?? {};
+  const redundancy     = plan.redundancyAssumptions?.value ?? {};
+  const network        = plan.networkArchitecture?.value ?? {};
+  const topology       = plan.topologyRelationships?.value ?? {};
+  const connectivity   = plan.opticalOrCopperAssumptions?.value ?? {};
+  const compute        = plan.computeInventory?.value ?? [];
+  const rackCount      = plan.rackCount?.value ?? 0;
+  const totalPower     = def(plan.totalPower?.value, 'TBD');
 
-  const coolingType = na(cooling.type);
-  const pue = na(cooling.pue);
-  const wue = na(cooling.waterUsageEffectiveness);
-  const powerRedundancy = na(redundancy.powerRedundancy);
-  const arch = na(network.architecture);
-  const internalBandwidth = na(network.internalBandwidth);
-  const transceiverType = na(connectivity.transceiverType);
-  const spines = na(topology.spines);
-  const leaves = na(topology.leaves);
+  const coolingType     = def(cooling.type, 'Direct Liquid Cooling');
+  const pue             = def(cooling.pue, '1.3');
+  const wue             = def(cooling.waterUsageEffectiveness, '1.2');
+  const powerRedundancy = def(redundancy.powerRedundancy, '2N');
+  const arch            = def(network.architecture, 'Leaf-Spine');
+  const uplinkBW        = def(network.internalBandwidth, '400GbE');
+  const transceiverType = def(connectivity.transceiverType, 'QSFP-DD');
+  const spines          = def(topology.spines, '2');
+  const leaves          = def(topology.leaves, '4');
 
-  const firstCompute = compute[0];
-  const gpuModel = na(firstCompute?.model ?? firstCompute?.type);
-  const rackPowerDensity = na(plan.rackPowerDensity?.value);
+  const firstCompute    = compute[0];
+  const gpuModel        = def(firstCompute?.model ?? firstCompute?.type, 'H100 SXM5');
+  const rackPowerKw     = def(plan.rackPowerDensity?.value, '10');
+  const rackCountStr    = String(rackCount || 'TBD');
 
-  const rowA = Math.ceil(rackCount / 2);
-  const rowB = Math.floor(rackCount / 2);
+  const rowA = Math.ceil((rackCount || 8) / 2);
+  const rowB = Math.floor((rackCount || 8) / 2);
 
   const lines: string[] = [
     '@startuml',
     '',
-    'skinparam backgroundColor #0a0a0a',
-    'skinparam defaultFontColor #a3a3a3',
+    'skinparam backgroundColor #F8FAFC',
+    'skinparam defaultFontColor #1E293B',
     'skinparam defaultFontName "Helvetica"',
+    'skinparam defaultFontSize 11',
     'skinparam rectangle {',
-    '  BackgroundColor #111111',
-    '  BorderColor #2a2a2a',
-    '  FontColor #f5f5f5',
+    '  BackgroundColor #F1F5F9',
+    '  BorderColor #CBD5E1',
+    '  FontColor #334155',
     '}',
     'skinparam node {',
-    '  BackgroundColor #1a1a2e',
-    '  BorderColor #4b5563',
-    '  FontColor #f5f5f5',
+    '  BackgroundColor #EFF6FF',
+    `  BorderColor ${C.spine}`,
+    '  FontColor #1E293B',
     '}',
-    'skinparam ArrowColor #4b5563',
-    'skinparam NoteBackgroundColor #1a1a1a',
-    'skinparam NoteBorderColor #2a2a2a',
-    'skinparam NoteFontColor #6b7280',
+    `skinparam ArrowColor ${C.spine}`,
+    'skinparam ArrowFontColor #334155',
+    'skinparam ArrowFontSize 9',
+    'skinparam NoteBackgroundColor #FEF9C3',
+    'skinparam NoteBorderColor #FDE047',
+    'skinparam NoteFontColor #713F12',
     '',
     `title ${projectName} — Site Layout`,
     '',
-    'rectangle "Data Hall" #0a2e1a {',
-    '  node "Row A" as row_a #0a2e1a {',
-    `    [${rowA} racks | ${gpuModel} | ${rackPowerDensity} kW/rack | ${coolingType}]`,
+    // ─── Data Hall: Row A and Row B side-by-side inside the rectangle ────────
+    'rectangle "Data Hall" #E8FFF3 {',
+    '  rectangle "Row A" as row_a #D1FAE5 {',
+    `    [${rowA} racks | ${gpuModel} | ${rackPowerKw} kW/rack]`,
     '  }',
-    '  node "Row B" as row_b #0a2e1a {',
-    `    [${rowB} racks | ${gpuModel} | ${rackPowerDensity} kW/rack | ${coolingType}]`,
-    '  }',
-    '}',
-    '',
-    'rectangle "Utility Room" #1a1f2e {',
-    '  node "MEP / Power" as mep_node #1a1f2e {',
-    `    [Total: ${totalPower} kW]`,
-    `    [Redundancy: ${powerRedundancy}]`,
-    '  }',
-    '  node "Cooling Plant" as cooling_node #1a1f2e {',
-    `    [Type: ${coolingType}]`,
-    `    [PUE: ${pue}]`,
-    `    [WUE: ${wue}]`,
+    '  rectangle "Row B" as row_b #D1FAE5 {',
+    `    [${rowB} racks | ${gpuModel} | ${rackPowerKw} kW/rack]`,
     '  }',
     '}',
     '',
-    'rectangle "Network / Meet-Me" #0c1d3a {',
-    '  node "Network Room" as net_node #0c1d3a {',
-    `    [Arch: ${arch}]`,
-    `    [Spines: ${spines} / Leaves: ${leaves}]`,
-    `    [Bandwidth: ${internalBandwidth}]`,
+    // ─── Utility Room ─────────────────────────────────────────────────────────
+    'rectangle "Utility Room" #F1F5F9 {',
+    '  node "MEP / Power" as mep_node {',
+    `    [Total: ${totalPower} kW | ${powerRedundancy}]`,
+    '  }',
+    '  node "Cooling Plant" as cooling_node {',
+    `    [Type: ${coolingType} | PUE: ${pue}]`,
+    '  }',
+    `  note right of cooling_node : WUE: ${wue}`,
+    '}',
+    '',
+    // ─── Network Room ─────────────────────────────────────────────────────────
+    'rectangle "Network / Meet-Me" #EFF6FF {',
+    '  node "Network Room" as net_node {',
+    `    [${arch} | Spines: ${spines} / Leaves: ${leaves}]`,
+    `    [Uplink: ${uplinkBW} | ${transceiverType}]`,
     '  }',
     '}',
     '',
-    'rectangle "Facility" #1a1010 {',
-    '  node "Loading Dock" as dock_node #1a1010 {',
-    `    [${rackCountDisplay} racks total]`,
+    // ─── Facility ─────────────────────────────────────────────────────────────
+    'rectangle "Facility" #FFF7ED {',
+    '  node "Loading Dock" as dock_node {',
+    `    [${rackCountStr} racks total]`,
     '  }',
     '}',
     '',
-    `mep_node --> row_a : "power\\n${totalPower} kW / ${powerRedundancy}"`,
-    `mep_node --> row_b : "power\\n${totalPower} kW / ${powerRedundancy}"`,
-    `cooling_node --> row_a : "${coolingType}\\nPUE ${pue}"`,
-    `cooling_node --> row_b : "${coolingType}\\nPUE ${pue}"`,
-    `net_node --> row_a : "${internalBandwidth}\\n${transceiverType}"`,
-    `net_node --> row_b : "${internalBandwidth}\\n${transceiverType}"`,
+    // ─── Connections: one arrow per zone pair (not per row) ───────────────────
+    `mep_node -[#${hex(C.management)}]-> row_a : "power / ${powerRedundancy}"`,
+    `mep_node -[#${hex(C.management)}]-> row_b : "power / ${powerRedundancy}"`,
+    `cooling_node -[#${hex(C.frontend)}]-> row_a : "${coolingType}"`,
+    `cooling_node -[#${hex(C.frontend)}]-> row_b : "${coolingType}"`,
+    `net_node -[#${hex(C.spine)}]-> row_a : "${uplinkBW}"`,
+    `net_node -[#${hex(C.spine)}]-> row_b : "${uplinkBW}"`,
     '',
-    'legend right',
-    '  |= Color |= Zone |',
-    '  |<#22c55e> | Data Hall (green) |',
-    '  |<#6b7280> | Utility Room (gray) |',
-    '  |<#3b82f6> | Network Room (blue) |',
-    '  |<#6b1a1a> | Facility (red) |',
-    `  Total Power: ${totalPower} kW  |  Cooling: ${coolingType}`,
-    `  PUE: ${pue}  |  Racks: ${rackCountDisplay}  |  GPU: ${gpuModel}`,
+    // ─── Legend ───────────────────────────────────────────────────────────────
+    'legend bottom',
+    '  **Legend — Site Layout**',
+    '  |= Zone |= Color |= Description |',
+    `  |<#D1FAE5> Data Hall | Green | Compute rows / GPU racks |`,
+    `  |<#F1F5F9> Utility | Gray | Power & cooling plant |`,
+    `  |<#EFF6FF> Network | Blue | Meet-me / switching |`,
+    `  |<#FFF7ED> Facility | Amber | Loading dock / staging |`,
+    '  |= Link |= Color |= Purpose |',
+    `  | Blue | ${C.spine} | Network (${uplinkBW}) |`,
+    `  | Cyan | ${C.frontend} | Cooling |`,
+    `  | Orange | ${C.management} | Power |`,
+    `  Total Power: ${totalPower} kW   Cooling: ${coolingType}   PUE: ${pue}   Racks: ${rackCountStr}`,
     'endlegend',
     '',
     '@enduml',

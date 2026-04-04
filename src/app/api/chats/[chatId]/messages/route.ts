@@ -77,7 +77,48 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
     logger.error('planning_pipeline_error', { chatId: params.chatId, error: planningError });
   }
 
-  // Build AI response
+  // Build a rich planning summary if we ran the pipeline and have a meaningful plan
+  let planSummaryBlock = '';
+  if (planResult && planResult.plan && planResult.plan.rackCount.value > 0) {
+    const p = planResult.plan;
+    const projectName = p.project?.value?.name ?? 'AI Data Center';
+    const rackCount   = p.rackCount?.value ?? 0;
+    const totalPower  = p.totalPower?.value ?? 0;
+    const site        = [p.site?.value?.city, p.site?.value?.state, p.site?.value?.country].filter(Boolean).join(', ') || 'location TBD';
+    const compute     = p.computeInventory?.value ?? [];
+    const gpuModel    = compute[0]?.vendor && compute[0]?.model
+      ? `${compute[0].vendor} ${compute[0].model}`
+      : (compute[0]?.model ?? compute[0]?.type ?? 'GPU compute');
+    const topology    = p.topologyRelationships?.value ?? {};
+    const network     = p.networkArchitecture?.value ?? {};
+
+    const topKeyAssumptions = (p.assumptions ?? [])
+      .filter(a => a.sourceType === 'llm_estimate')
+      .slice(0, 5);
+
+    const highRisk = (p.risks ?? []).find(r => r.severity === 'critical' || r.severity === 'high');
+    const openQs   = (p.openQuestions ?? []).slice(0, 3);
+
+    planSummaryBlock = [
+      `\n\n---`,
+      `**📐 Plan Summary: ${projectName}**`,
+      ``,
+      `Designed a **${rackCount}-rack AI data center** in ${site} with **${totalPower} kW** total power capacity.`,
+      `Compute: **${gpuModel}** (${compute[0]?.perRack ?? 8} GPUs/rack × ${rackCount} racks).`,
+      topology.spines ? `Network: **${topology.tier ?? 'Leaf-Spine'}** — ${topology.spines} spines / ${topology.leaves ?? '?'} leaves, ${network.internalBandwidth ?? '400GbE'} uplinks.` : '',
+      ``,
+      topKeyAssumptions.length > 0 ? `**Key assumptions made:**` : '',
+      ...topKeyAssumptions.map(a => `- **${a.field}**: ${String(a.value)} *(${a.reasoning})*`),
+      ``,
+      openQs.length > 0 ? `**Open questions:**` : '',
+      ...openQs.map(q => `- ${q}`),
+      highRisk ? `\n⚠️ **Risk flagged:** ${highRisk.description} (${highRisk.severity} severity)` : '',
+      ``,
+      `---`,
+      `I've opened the right panel — check the **Plan tab** for full details, or click any button in the **Artifacts tab** to generate topology diagrams, BOM, or cost analysis.`,
+    ].filter(l => l !== '').join('\n');
+  }
+
   const systemPrompt = [
     'You are NeoCloud Builder, an AI-native planning assistant for AI data centers and neoclouds.',
     'Help users design rack topologies, GPU/TPU clusters, leaf-spine networks, storage, power/cooling, site layouts, BOMs, and cost estimates.',
@@ -85,6 +126,7 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
     'If you update the plan, briefly summarize what changed.',
     fileContext ? `\nRelevant uploaded documents:\n${fileContext}` : '',
     planResult ? `\nCurrent plan state: ${planResult.plan.rackCount.value} racks, version ${planResult.plan.version}` : '',
+    planSummaryBlock ? `\nAfter your response, append exactly this planning summary block:\n${planSummaryBlock}` : '',
   ].filter(Boolean).join('\n');
 
   const conversationMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
