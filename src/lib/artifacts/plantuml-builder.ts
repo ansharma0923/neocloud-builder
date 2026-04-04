@@ -121,7 +121,7 @@ export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
   // ─── Compute racks ────────────────────────────────────────────────────────
   lines.push('package "Compute Layer" {');
   for (let r = 0; r < displayRacks; r++) {
-    lines.push(`  component "Rack-${r + 1}\\n${computeVendor} ${computeModel}\\n${perRackGPUs}× GPU / ${rackPowerKw} kW" as rack_${r + 1} <<rack>>`);
+    lines.push(`  component "Rack-${r + 1}\\n${computeVendor} ${computeModel}\\n${perRackGPUs} × GPU / ${rackPowerKw} kW" as rack_${r + 1} <<rack>>`);
   }
   if (extraRacks > 0) {
     lines.push(`  note "...and ${extraRacks} more racks" as extra_note`);

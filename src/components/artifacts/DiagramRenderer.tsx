@@ -722,7 +722,7 @@ function RackElevation({ spec, width, height, svgId }: { spec: DiagramSpec; widt
             })}
             <text x={x + RACK_W / 2} y={yBase + rackInGrp * 4 + (computeStartU + (computeEndU - computeStartU) / 2) * slotH + 4}
               textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize={8} fontWeight={600} fill={PALETTE.text}>
-              {`${gpuCount}× GPU`}
+              {`${gpuCount} × GPU`}
             </text>
             <text x={x + RACK_W / 2} y={yBase + rackInGrp * 4 + (computeStartU + (computeEndU - computeStartU) / 2) * slotH + 14}
               textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize={7} fill={PALETTE.textSub}>
