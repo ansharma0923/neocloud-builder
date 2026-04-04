@@ -18,7 +18,16 @@ export async function GET(
   });
   if (!artifact) return NextResponse.json({ error: 'Artifact not found' }, { status: 404 });
 
-  return NextResponse.json(artifact);
+  let parsedContent: unknown = artifact.content;
+  try {
+    if (artifact.content) {
+      parsedContent = JSON.parse(artifact.content as string);
+    }
+  } catch {
+    // keep original string value
+  }
+
+  return NextResponse.json({ ...artifact, content: parsedContent });
 }
 
 export async function DELETE(
