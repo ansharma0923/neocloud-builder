@@ -15,7 +15,7 @@ export const SendMessageSchema = z.object({
 });
 
 export const GenerateArtifactSchema = z.object({
-  type: z.enum(['summary', 'report', 'bom', 'cost_sheet', 'diagram_spec', 'generated_image', 'export_package']),
+  type: z.enum(['summary', 'report', 'bom', 'cost_sheet', 'diagram_spec', 'generated_image', 'export_package', 'plantuml']),
   style: z.string().optional(),
 });
 

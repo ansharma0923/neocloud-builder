@@ -295,6 +295,7 @@ export type ArtifactType =
   | 'cost_sheet'
   | 'diagram_spec'
   | 'generated_image'
-  | 'export_package';
+  | 'export_package'
+  | 'plantuml';
 
 export type ArtifactStatus = 'pending' | 'generating' | 'ready' | 'failed';

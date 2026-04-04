@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/app-store';
-import { X, FileText, Brain, Package, Layout, Loader2, Maximize2, Download } from 'lucide-react';
+import { X, FileText, Brain, Package, Layout, Loader2, Maximize2, Download, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CanonicalPlanState, DiagramSpec } from '@/types/planning';
 import { DiagramRenderer } from '@/components/artifacts/DiagramRenderer';
@@ -38,6 +38,9 @@ const ARTIFACT_BUTTONS = [
   { label: 'Cost Sheet', body: { type: 'cost_sheet' } },
   { label: 'Executive Summary', body: { type: 'summary' } },
   { label: 'Export Package', body: { type: 'export_package' } },
+  { label: 'PlantUML: Network Topology', body: { type: 'plantuml', style: 'topology_2d' } },
+  { label: 'PlantUML: Logical Architecture', body: { type: 'plantuml', style: 'logical_arch' } },
+  { label: 'PlantUML: Site Layout', body: { type: 'plantuml', style: 'site_layout' } },
 ] as const;
 
 export function RightPanel({ chatId }: RightPanelProps) {
@@ -387,6 +390,11 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
       ? (parsedContent as unknown as DiagramSpec)
       : null;
 
+  const plantUMLScript: string | null =
+    artifact.type === 'plantuml' && parsedContent && 'script' in parsedContent
+      ? (parsedContent.script as string)
+      : null;
+
   const svgId = `diagram-svg-${artifact.id}`;
 
   return (
@@ -408,6 +416,55 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
           onClose={() => setModalOpen(false)}
         />
       )}
+      {plantUMLScript && (
+        <PlantUMLCard script={plantUMLScript} title={artifact.title} />
+      )}
+    </div>
+  );
+}
+
+function PlantUMLCard({ script, title }: { script: string; title: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(script).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleDownload() {
+    const blob = new Blob([script], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = title.replace(/[/\\:*?"<>|\x00]/g, '_').replace(/\s+/g, '_');
+    a.download = `${safeName}.puml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1a1a1a] text-xs text-[#a3a3a3] hover:text-[#f5f5f5] hover:bg-[#222222] transition-colors"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? 'Copied!' : 'Copy PlantUML'}
+        </button>
+        <button
+          onClick={handleDownload}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1a1a1a] text-xs text-[#a3a3a3] hover:text-[#f5f5f5] hover:bg-[#222222] transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          .puml
+        </button>
+      </div>
+      <pre className="text-[9px] text-[#6b7280] bg-[#0a0a0a] rounded p-2 overflow-x-auto max-h-40 leading-relaxed font-mono whitespace-pre">
+        {script.slice(0, 400)}{script.length > 400 ? '\n...' : ''}
+      </pre>
     </div>
   );
 }
