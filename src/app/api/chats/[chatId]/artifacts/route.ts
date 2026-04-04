@@ -46,7 +46,12 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
   const canonicalPlan = await prisma.canonicalPlan.findUnique({ where: { chatId: params.chatId } });
   if (!canonicalPlan) return NextResponse.json({ error: 'No plan found' }, { status: 404 });
 
-  const plan = canonicalPlan.state as unknown as CanonicalPlanState;
+  let plan: CanonicalPlanState;
+  try {
+    plan = JSON.parse(canonicalPlan.state as string) as CanonicalPlanState;
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse plan state' }, { status: 500 });
+  }
   const { type, style } = parsed.data;
 
   let content: string | Record<string, unknown>;
@@ -97,7 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
         planVersionId: canonicalPlan.id,
         type,
         title,
-        content: typeof content === 'string' ? { text: content } : content,
+        content: typeof content === 'string' ? JSON.stringify({ text: content }) : JSON.stringify(content),
         status: 'ready',
       },
     });

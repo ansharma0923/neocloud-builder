@@ -72,9 +72,9 @@ export async function generateDiagramImage(
       planVersionId: planVersionId ?? null,
       type: 'diagram_spec',
       title: spec.title,
-      content: spec as unknown as Record<string, unknown>,
+      content: JSON.stringify(spec as unknown as Record<string, unknown>),
       status: 'ready',
-      metadata: { style: spec.style },
+      metadata: JSON.stringify({ style: spec.style }),
     },
   });
 
@@ -86,7 +86,7 @@ export async function generateDiagramImage(
       planVersionId: planVersionId ?? null,
       type: 'generated_image',
       title: `${spec.title} (Image)`,
-      content: { specId: specArtifactId },
+      content: JSON.stringify({ specId: specArtifactId }),
       status: 'generating',
     },
   });
@@ -117,7 +117,7 @@ export async function generateDiagramImage(
     await prisma.artifact.update({
       where: { id: imageArtifactId },
       data: {
-        content: { specId: specArtifactId, storagePath, originalUrl: imageUrl },
+        content: JSON.stringify({ specId: specArtifactId, storagePath, originalUrl: imageUrl }),
         status: 'ready',
       },
     });
@@ -133,7 +133,7 @@ export async function generateDiagramImage(
   } catch (error) {
     await prisma.artifact.update({
       where: { id: imageArtifactId },
-      data: { status: 'failed', metadata: { error: String(error) } },
+      data: { status: 'failed', metadata: JSON.stringify({ error: String(error) }) },
     });
     throw error;
   }

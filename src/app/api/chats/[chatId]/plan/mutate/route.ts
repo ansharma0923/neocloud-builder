@@ -24,7 +24,12 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
   const canonicalPlan = await prisma.canonicalPlan.findUnique({ where: { chatId: params.chatId } });
   if (!canonicalPlan) return NextResponse.json({ error: 'No plan found for this chat' }, { status: 404 });
 
-  const currentPlan = canonicalPlan.state as unknown as CanonicalPlanState;
+  let currentPlan: CanonicalPlanState;
+  try {
+    currentPlan = JSON.parse(canonicalPlan.state as string) as CanonicalPlanState;
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse plan state' }, { status: 500 });
+  }
 
   // Use LLM to extract mutation instruction from the description
   const extractResult = await createChatCompletion('structured_extraction', [
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: { chatId: str
     where: { chatId: params.chatId },
     data: {
       version: result.plan.version,
-      state: result.plan as unknown as Record<string, unknown>,
+      state: JSON.stringify(result.plan as unknown as Record<string, unknown>),
     },
   });
 
