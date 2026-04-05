@@ -131,11 +131,15 @@ export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
     rackComponents.push(`  note "…and ${extraRacks} more racks" as extra_note`);
   }
 
+  // Semantic arrow colors — matching the fixed design-system palette
+  const ARROW_UPLINK   = '#2563EB'; // core / fabric
+  const ARROW_DOWNLINK = '#06B6D4'; // services / leaf
+
   const spineLeafEdges: string[] = [];
   for (let s = 1; s <= spines; s++) {
     for (let l = 1; l <= leaves; l++) {
       const lbl = uplinkLabel ? ` : "${uplinkLabel}"` : '';
-      spineLeafEdges.push(`spine_${s} --> leaf_${l}${lbl}`);
+      spineLeafEdges.push(`spine_${s} -[${ARROW_UPLINK}]-> leaf_${l}${lbl}`);
     }
   }
 
@@ -146,7 +150,7 @@ export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
       const rackIdx = (l - 1) * racksPerLeaf + r + 1;
       if (rackIdx <= displayRacks) {
         const lbl = downlinkLabel ? ` : "${downlinkLabel}"` : '';
-        leafRackEdges.push(`leaf_${l} --> rack_${rackIdx}${lbl}`);
+        leafRackEdges.push(`leaf_${l} -[${ARROW_DOWNLINK}]-> rack_${rackIdx}${lbl}`);
       }
     }
   }
@@ -189,12 +193,13 @@ export function buildTopologyPlantUML(plan: CanonicalPlanState): string {
     '',
     'legend right',
     '  Node Colors',
-    `  Spine  : ${SK_SPINE_BORDER}`,
-    `  Leaf   : ${SK_LEAF_BORDER}`,
-    `  Rack   : ${SK_COMPUTE_BORDER}`,
+    `  <back:${SK_SPINE_BG}><color:${SK_SPINE_BORDER}>Spine</color></back>  : core / fabric`,
+    `  <back:${SK_LEAF_BG}><color:${SK_LEAF_BORDER}>Leaf</color></back>   : services layer`,
+    `  <back:${SK_COMPUTE_BG}><color:${SK_COMPUTE_BORDER}>Rack</color></back>   : compute`,
+    '  ----',
     '  Connection Colors',
-    '  Blue  : core / uplink fabric',
-    '  Cyan  : leaf / downlink',
+    `  <color:#2563EB>━━</color> Blue  : uplink (spine → leaf)`,
+    `  <color:#06B6D4>━━</color> Cyan  : downlink (leaf → rack)`,
     'endlegend',
     '',
     '@enduml',
@@ -226,17 +231,22 @@ export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
   const leaves       = na(topology.leaves);
   const bw           = na(network.internalBandwidth);
 
-  const serviceNames = services.length > 0
-    ? services.map(s => `  [${na(s.name)}]`).join('\n')
-    : '  [No services defined]';
+  /** Render a list of items as PlantUML sub-components, filtering out blank labels. */
+  function toSubComponents(labels: string[]): string {
+    return labels.filter(Boolean).map(l => `  [${l}]`).join('\n');
+  }
 
-  const computeItems = compute.length > 0
-    ? compute.map(c => `  [${[na(c.vendor), na(c.model ?? c.type), c.quantity ? `x${c.quantity}` : ''].filter(Boolean).join(' ')}]`).join('\n')
-    : '  [No compute defined]';
+  const serviceNames = toSubComponents(
+    services.map(s => na(s.name))
+  );
 
-  const storageItems = storage.length > 0
-    ? storage.map(s => `  [${[na(s.type), na(s.vendor), na(s.model), s.capacityTB ? `${s.capacityTB}TB` : ''].filter(Boolean).join(' ')}]`).join('\n')
-    : '  [No storage defined]';
+  const computeItems = toSubComponents(
+    compute.map(c => [na(c.vendor), na(c.model ?? c.type), c.quantity ? `x${c.quantity}` : ''].filter(Boolean).join(' '))
+  );
+
+  const storageItems = toSubComponents(
+    storage.map(s => [na(s.type), na(s.vendor), na(s.model), s.capacityTB ? `${s.capacityTB}TB` : ''].filter(Boolean).join(' '))
+  );
 
   const rackLabel    = rackCount ? `Compute (${rackCount} racks)` : 'Compute';
   const powerLabel   = totalPower ? `Power (${totalPower} kW)` : 'Power';
@@ -252,6 +262,13 @@ export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
   const totalPwrLine = totalPower ? `    [Total Power: ${totalPower} kW]` : '';
   const pueLine      = pue ? `    [PUE: ${pue}]` : '';
   const redLine      = powerRed ? `    [Redundancy: ${powerRed}]` : '';
+
+  // Semantic arrow colors — matching the fixed design-system palette
+  const ARROW_MGMT    = '#F59E0B'; // management / amber
+  const ARROW_CTRL    = '#2563EB'; // control / core blue
+  const ARROW_STORAGE = '#16A34A'; // storage / green
+  const ARROW_POWER   = '#EF4444'; // power / security red
+  const ARROW_COOLING = '#9333EA'; // cooling / purple
 
   const lines: string[] = [
     '@startuml',
@@ -313,21 +330,24 @@ export function buildLogicalArchPlantUML(plan: CanonicalPlanState): string {
     '  }',
     '}',
     '',
-    `mgmt_node --> ctrl_node : "${mgmtToCtrl}"`,
-    `ctrl_node --> compute_node : "${ctrlToComp}"`,
-    `compute_node --> storage_db : "${compToStore}"`,
-    `power_node --> compute_node : "${powerToComp}"`,
-    `cooling_node --> compute_node : "${coolToComp}"`,
+    `mgmt_node -[${ARROW_MGMT}]-> ctrl_node : "${mgmtToCtrl}"`,
+    `ctrl_node -[${ARROW_CTRL}]-> compute_node : "${ctrlToComp}"`,
+    `compute_node -[${ARROW_STORAGE}]-> storage_db : "${compToStore}"`,
+    `power_node -[${ARROW_POWER}]-> compute_node : "${powerToComp}"`,
+    `cooling_node -[${ARROW_COOLING}]-> compute_node : "${coolToComp}"`,
     '',
     'legend right',
     '  Node Colors',
-    `  Management : ${SK_MGMT_BORDER}`,
-    `  Storage    : ${SK_STORAGE_BORDER}`,
+    `  <back:${SK_MGMT_BG}><color:${SK_MGMT_BORDER}>Management</color></back>`,
+    `  <back:${SK_STORAGE_BG}><color:${SK_STORAGE_BORDER}>Storage</color></back>`,
+    `  <back:${SK_COMPUTE_BG}><color:${SK_COMPUTE_BORDER}>Compute</color></back>`,
+    '  ----',
     '  Connection Colors',
-    '  Amber  : management',
-    '  Blue   : data fabric',
-    '  Red    : power',
-    '  Purple : cooling',
+    `  <color:#F59E0B>━━</color> Amber  : management`,
+    `  <color:#2563EB>━━</color> Blue   : control / data fabric`,
+    `  <color:#16A34A>━━</color> Green  : storage I/O`,
+    `  <color:#EF4444>━━</color> Red    : power`,
+    `  <color:#9333EA>━━</color> Purple : cooling`,
     'endlegend',
     '',
     '@enduml',
@@ -370,6 +390,11 @@ export function buildSiteLayoutPlantUML(plan: CanonicalPlanState): string {
   const netEdgeLabel     = [arch, bw].filter(Boolean).join(' · ');
   const topoInfo         = spines && leaves ? `${spines} spines / ${leaves} leaves` : '';
 
+  // Semantic arrow colors — matching the fixed design-system palette
+  const ARROW_POWER   = '#EF4444'; // power / security red
+  const ARROW_COOLING = '#9333EA'; // cooling / purple
+  const ARROW_NETWORK = '#2563EB'; // network / core blue
+
   const lines: string[] = [
     '@startuml',
     '',
@@ -405,22 +430,23 @@ export function buildSiteLayoutPlantUML(plan: CanonicalPlanState): string {
     `  node "Loading Dock${rackCount ? `\\n${rackCount} racks total` : ''}" as dock_node`,
     '}',
     '',
-    `mep_node --> row_a : "${powerEdgeLabel || 'power'}"`,
-    `mep_node --> row_b : "${powerEdgeLabel || 'power'}"`,
-    `cooling_node --> row_a : "${coolingEdgeLabel || 'cooling'}"`,
-    `cooling_node --> row_b : "${coolingEdgeLabel || 'cooling'}"`,
-    `net_node --> row_a : "${netEdgeLabel || 'network'}"`,
-    `net_node --> row_b : "${netEdgeLabel || 'network'}"`,
+    `mep_node -[${ARROW_POWER}]-> row_a : "${powerEdgeLabel || 'power'}"`,
+    `mep_node -[${ARROW_POWER}]-> row_b : "${powerEdgeLabel || 'power'}"`,
+    `cooling_node -[${ARROW_COOLING}]-> row_a : "${coolingEdgeLabel || 'cooling'}"`,
+    `cooling_node -[${ARROW_COOLING}]-> row_b : "${coolingEdgeLabel || 'cooling'}"`,
+    `net_node -[${ARROW_NETWORK}]-> row_a : "${netEdgeLabel || 'network'}"`,
+    `net_node -[${ARROW_NETWORK}]-> row_b : "${netEdgeLabel || 'network'}"`,
     '',
     'legend right',
     '  Zone Colors',
-    `  Data Hall : ${SK_COMPUTE_BORDER}`,
-    `  Utility   : ${SK_MGMT_BORDER}`,
-    `  Network   : ${SK_SPINE_BORDER}`,
+    `  <back:${SK_COMPUTE_BG}><color:${SK_COMPUTE_BORDER}>Data Hall</color></back>`,
+    `  <back:${SK_MGMT_BG}><color:${SK_MGMT_BORDER}>Utility</color></back>`,
+    `  <back:${SK_SPINE_BG}><color:${SK_SPINE_BORDER}>Network</color></back>`,
+    '  ----',
     '  Connection Colors',
-    '  Red    : power',
-    '  Purple : cooling',
-    '  Blue   : network',
+    `  <color:#EF4444>━━</color> Red    : power`,
+    `  <color:#9333EA>━━</color> Purple : cooling`,
+    `  <color:#2563EB>━━</color> Blue   : network`,
     'endlegend',
     '',
     '@enduml',

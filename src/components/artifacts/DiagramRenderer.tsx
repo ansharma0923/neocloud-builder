@@ -190,14 +190,14 @@ function DiagramLegend({
 // ─── Topology 2D — Left-to-Right layout ───────────────────────────────────────
 
 function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
-  const PAD        = 40;
-  const NODE_W     = 120;
-  const NODE_H     = 32;
-  const NODE_GAP_V = 10;
-  const COL_INNER  = 24;  // horizontal padding inside column band
-  const HEADER_H   = 36;
-  const ZONE_LBL_H = 22;
-  const LEGEND_H   = 90;
+  const PAD        = 48;
+  const NODE_W     = 140;
+  const NODE_H     = 36;
+  const NODE_GAP_V = 14;
+  const COL_INNER  = 20;  // horizontal padding inside column band
+  const HEADER_H   = 40;
+  const ZONE_LBL_H = 24;
+  const LEGEND_H   = 100;
 
   // Build zone lookup maps
   const zoneMap  = new Map<string, DiagramZone>(spec.zones.map(z => [z.id, z]));
@@ -227,8 +227,6 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
   const maxNodes  = Math.max(...sortedZones.map(z => z.nodes.length), 1);
   const contentH  = ZONE_LBL_H + maxNodes * (NODE_H + NODE_GAP_V) - NODE_GAP_V;
   const naturalH  = HEADER_H + PAD + contentH + PAD + LEGEND_H;
-  const svgH      = Math.max(height, naturalH);
-  const scale     = svgH > height ? height / svgH : 1;
 
   // Column x positions
   const colX = new Map<string, number>();
@@ -247,6 +245,25 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
   }
 
   const nodeMap = new Map(spec.nodes.map(n => [n.id, n]));
+
+  // Precompute edge fan-out: distribute exit/entry Y-offsets per node
+  const srcEdgeCounts = new Map<string, number>();
+  const tgtEdgeCounts = new Map<string, number>();
+  const srcEdgeIndex  = new Map<string, number>();
+  const tgtEdgeIndex  = new Map<string, number>();
+  for (const edge of spec.edges) {
+    srcEdgeCounts.set(edge.source, (srcEdgeCounts.get(edge.source) ?? 0) + 1);
+    tgtEdgeCounts.set(edge.target, (tgtEdgeCounts.get(edge.target) ?? 0) + 1);
+  }
+  for (const edge of spec.edges) {
+    const si = srcEdgeIndex.get(edge.source) ?? 0;
+    srcEdgeIndex.set(edge.source, si + 1);
+    const ti = tgtEdgeIndex.get(edge.target) ?? 0;
+    tgtEdgeIndex.set(edge.target, ti + 1);
+    // Store per-edge indices as compound key
+    srcEdgeIndex.set(`${edge.id}:src`, si);
+    tgtEdgeIndex.set(`${edge.id}:tgt`, ti);
+  }
 
   // Unique edge types for legend
   const edgeTypeSet = new Set(spec.edges.map(e => e.type).filter(Boolean));
@@ -270,12 +287,12 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
       {/* subtle drop-shadow filter */}
       <defs>
         <filter id="node-shadow" x="-5%" y="-5%" width="110%" height="110%">
-          <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000" floodOpacity="0.08" />
+          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.07" />
         </filter>
       </defs>
 
       {/* Title */}
-      <text x={PAD} y={22} fontFamily={FONT_FAMILY} fontSize={13} fontWeight={700} fill={TEXT_DARK}>
+      <text x={PAD} y={26} fontFamily={FONT_FAMILY} fontSize={14} fontWeight={700} fill={TEXT_DARK}>
         {spec.title}
       </text>
 
@@ -288,38 +305,47 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
           <g key={`band-${zone.id}`}>
             <rect x={cx + 4} y={HEADER_H + PAD / 2}
               width={colBandW - 8} height={bandH}
-              rx={8}
+              rx={10}
               fill={hexToRgba(color, 0.06)}
-              stroke={hexToRgba(color, 0.22)}
-              strokeWidth={1} />
-            <text x={cx + colBandW / 2} y={HEADER_H + PAD / 2 + 15}
+              stroke={hexToRgba(color, 0.28)}
+              strokeWidth={1.2} />
+            <text x={cx + colBandW / 2} y={HEADER_H + PAD / 2 + 16}
               textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={10} fontWeight={700}
-              fill={color}>
+              fill={color} letterSpacing="0.5">
               {zone.label.toUpperCase()}
             </text>
           </g>
         );
       })}
 
-      {/* Edges — LR bezier curves */}
+      {/* Edges — LR bezier curves with fan-out distribution */}
       {spec.edges.map(edge => {
         const src = nodePos.get(edge.source);
         const tgt = nodePos.get(edge.target);
         if (!src || !tgt) return null;
-        const color  = edgeColorFor(edge.type);
+        const color    = edgeColorFor(edge.type);
         const markerId = markerIdFor(edge.type);
-        // Exit from right edge of source node, enter from left edge of target node
+
+        // Fan-out: distribute exit Y-points across the source node height
+        const srcTotal  = srcEdgeCounts.get(edge.source) ?? 1;
+        const srcIdx    = srcEdgeIndex.get(`${edge.id}:src`) ?? 0;
+        const tgtTotal  = tgtEdgeCounts.get(edge.target) ?? 1;
+        const tgtIdx    = tgtEdgeIndex.get(`${edge.id}:tgt`) ?? 0;
+
+        const margin    = NODE_H * 0.2;
+        const fanRange  = NODE_H - margin * 2;
+        const y1 = src.y + margin + (srcIdx + 0.5) * (fanRange / srcTotal);
+        const y2 = tgt.y + margin + (tgtIdx + 0.5) * (fanRange / tgtTotal);
+
         const x1 = src.x + nodeDisplayW;
-        const y1 = src.y + NODE_H / 2;
-        const x2 = tgt.x - 6;
-        const y2 = tgt.y + NODE_H / 2;
+        const x2 = tgt.x - 4;
         const mx  = (x1 + x2) / 2;
         const labelX = mx;
-        const labelY = (y1 + y2) / 2 - 4;
+        const labelY = (y1 + y2) / 2 - 5;
         return (
           <g key={edge.id}>
             <path d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
-              fill="none" stroke={color} strokeWidth={1.5} strokeOpacity={0.7}
+              fill="none" stroke={color} strokeWidth={1.8} strokeOpacity={0.75}
               markerEnd={`url(#${markerId})`} />
             {edge.label && (
               <text x={labelX} y={labelY} textAnchor="middle"
@@ -338,13 +364,14 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
         const zone  = nodeZone.get(node.id);
         const color = zoneColorFor(zone);
         const nodeRef = nodeMap.get(node.id);
+        const label = nodeRef?.label ?? node.label;
         return (
           <g key={node.id} filter="url(#node-shadow)">
-            <rect x={pos.x} y={pos.y} width={nodeDisplayW} height={NODE_H} rx={5}
+            <rect x={pos.x} y={pos.y} width={nodeDisplayW} height={NODE_H} rx={6}
               fill={hexToRgba(color, 0.13)} stroke={color} strokeWidth={1.5} />
             <text x={pos.x + nodeDisplayW / 2} y={pos.y + NODE_H / 2 + 4}
               textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={10} fill={TEXT_DARK} fontWeight={500}>
-              {(nodeRef?.label ?? node.label).replace(/\s+Rack\s+\d+/, ` R${node.id.replace(/\D/g, '')}`)}
+              {label}
             </text>
           </g>
         );
@@ -365,12 +392,12 @@ function Topology2D({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
 // ─── Logical Arch — Left-to-Right swimlane layout ─────────────────────────────
 
 function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
-  const PAD       = 40;
-  const NODE_W    = 130;
-  const NODE_H    = 44;
-  const HEADER_H  = 36;
-  const LEGEND_H  = 90;
-  const LANE_GAP  = 12;
+  const PAD       = 48;
+  const NODE_W    = 140;
+  const NODE_H    = 48;
+  const HEADER_H  = 40;
+  const LEGEND_H  = 100;
+  const LANE_GAP  = 14;
 
   // LR order for logical arch: management → control → compute → storage → network → infrastructure
   const ZONE_ORDER = ['management', 'control', 'compute', 'storage', 'network', 'infrastructure'];
@@ -404,13 +431,13 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
   for (const zone of sortedZones) {
     const cx = (colX.get(zone.id) ?? 0) + (laneW - NODE_W) / 2;
     zone.nodes.forEach((nid, ni) => {
-      const y = HEADER_H + PAD + ni * (NODE_H + 16);
+      const y = HEADER_H + PAD + ni * (NODE_H + 18);
       nodePos.set(nid, { x: cx, y });
     });
   }
 
   const maxNodesInCol = Math.max(...sortedZones.map(z => z.nodes.length), 1);
-  const contentH = maxNodesInCol * (NODE_H + 16) - 16;
+  const contentH = maxNodesInCol * (NODE_H + 18) - 18;
   const naturalH = HEADER_H + PAD + contentH + PAD + LEGEND_H;
 
   const edgeTypeSet = new Set(spec.edges.map(e => e.type).filter(Boolean));
@@ -430,12 +457,12 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
       <ArrowDefs />
       <defs>
         <filter id="la-shadow" x="-5%" y="-5%" width="110%" height="110%">
-          <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000" floodOpacity="0.08" />
+          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.07" />
         </filter>
       </defs>
 
       {/* Title */}
-      <text x={PAD} y={22} fontFamily={FONT_FAMILY} fontSize={13} fontWeight={700} fill={TEXT_DARK}>
+      <text x={PAD} y={26} fontFamily={FONT_FAMILY} fontSize={14} fontWeight={700} fill={TEXT_DARK}>
         {spec.title}
       </text>
 
@@ -443,13 +470,13 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
       {sortedZones.map(zone => {
         const cx    = colX.get(zone.id) ?? 0;
         const color = zoneColorFor(zone);
-        const laneH = zone.nodes.length * (NODE_H + 16) - 16 + PAD;
+        const laneH = zone.nodes.length * (NODE_H + 18) - 18 + PAD;
         return (
           <g key={`lane-${zone.id}`}>
             <rect x={cx} y={HEADER_H + PAD / 2} width={laneW} height={laneH}
-              rx={8} fill={hexToRgba(color, 0.06)} stroke={hexToRgba(color, 0.22)} strokeWidth={1} />
-            <text x={cx + laneW / 2} y={HEADER_H + PAD / 2 + 14}
-              textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={10} fontWeight={700} fill={color}>
+              rx={10} fill={hexToRgba(color, 0.06)} stroke={hexToRgba(color, 0.28)} strokeWidth={1.2} />
+            <text x={cx + laneW / 2} y={HEADER_H + PAD / 2 + 16}
+              textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={10} fontWeight={700} fill={color} letterSpacing="0.5">
               {zone.label.toUpperCase()}
             </text>
           </g>
@@ -465,16 +492,16 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
         const markerId = markerIdFor(edge.type);
         const x1 = src.x + NODE_W;
         const y1 = src.y + NODE_H / 2;
-        const x2 = tgt.x - 6;
+        const x2 = tgt.x - 4;
         const y2 = tgt.y + NODE_H / 2;
         const mx  = (x1 + x2) / 2;
         return (
           <g key={edge.id}>
             <path d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
-              fill="none" stroke={color} strokeWidth={1.5} strokeOpacity={0.75}
+              fill="none" stroke={color} strokeWidth={1.8} strokeOpacity={0.8}
               markerEnd={`url(#${markerId})`} />
             {edge.label && (
-              <text x={mx} y={Math.min(y1, y2) - 4}
+              <text x={mx} y={Math.min(y1, y2) - 5}
                 textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={9} fill={color} fontWeight={500}>
                 {edge.label}
               </text>
@@ -491,7 +518,7 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
         const color = zoneColorFor(zone);
         return (
           <g key={node.id} filter="url(#la-shadow)">
-            <rect x={pos.x} y={pos.y} width={NODE_W} height={NODE_H} rx={6}
+            <rect x={pos.x} y={pos.y} width={NODE_W} height={NODE_H} rx={7}
               fill={hexToRgba(color, 0.13)} stroke={color} strokeWidth={1.5} />
             <text x={pos.x + NODE_W / 2} y={pos.y + NODE_H / 2 + 4}
               textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={10} fill={TEXT_DARK} fontWeight={500}>
@@ -515,14 +542,14 @@ function LogicalArch({ spec, width, height, svgId }: { spec: DiagramSpec; width:
 // ─── Site Layout — Grid layout ────────────────────────────────────────────────
 
 function SiteLayout({ spec, width, height, svgId }: { spec: DiagramSpec; width: number; height: number; svgId?: string }) {
-  const PAD      = 40;
-  const HEADER_H = 36;
-  const ROOM_W   = 160;
-  const ROOM_H   = 90;
+  const PAD      = 48;
+  const HEADER_H = 40;
+  const ROOM_W   = 170;
+  const ROOM_H   = 96;
   const COLS     = 2;
-  const H_GAP    = 24;
-  const V_GAP    = 20;
-  const LEGEND_H = 90;
+  const H_GAP    = 28;
+  const V_GAP    = 24;
+  const LEGEND_H = 100;
 
   const zoneMap  = new Map<string, DiagramZone>(spec.zones.map(z => [z.id, z]));
   const nodeZone = new Map<string, DiagramZone>();
@@ -566,12 +593,12 @@ function SiteLayout({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
       <ArrowDefs />
       <defs>
         <filter id="sl-shadow" x="-5%" y="-5%" width="110%" height="110%">
-          <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000" floodOpacity="0.08" />
+          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.07" />
         </filter>
       </defs>
 
       {/* Title */}
-      <text x={PAD} y={22} fontFamily={FONT_FAMILY} fontSize={13} fontWeight={700} fill={TEXT_DARK}>
+      <text x={PAD} y={26} fontFamily={FONT_FAMILY} fontSize={14} fontWeight={700} fill={TEXT_DARK}>
         {spec.title}
       </text>
 
@@ -591,11 +618,11 @@ function SiteLayout({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
         return (
           <g key={edge.id}>
             <path d={`M${x1},${y1} Q${mx},${my} ${x2},${y2}`}
-              fill="none" stroke={color} strokeWidth={1.5}
-              strokeDasharray={edge.type === 'power' || edge.type === 'cooling' ? '5 3' : undefined}
-              strokeOpacity={0.7} markerEnd={`url(#${markerId})`} />
+              fill="none" stroke={color} strokeWidth={1.8}
+              strokeDasharray={edge.type === 'power' || edge.type === 'cooling' ? '6 3' : undefined}
+              strokeOpacity={0.75} markerEnd={`url(#${markerId})`} />
             {edge.label && (
-              <text x={mx} y={my - 4} textAnchor="middle"
+              <text x={mx} y={my - 5} textAnchor="middle"
                 fontFamily={FONT_FAMILY} fontSize={9} fill={color} fontWeight={500}>
                 {edge.label}
               </text>
@@ -612,17 +639,17 @@ function SiteLayout({ spec, width, height, svgId }: { spec: DiagramSpec; width: 
         const color = zoneColorFor(zone);
         return (
           <g key={node.id} filter="url(#sl-shadow)">
-            <rect x={pos.x} y={pos.y} width={ROOM_W} height={ROOM_H} rx={8}
-              fill={hexToRgba(color, 0.12)} stroke={color} strokeWidth={1.5} />
-            {/* zone indicator stripe */}
-            <rect x={pos.x} y={pos.y} width={ROOM_W} height={6} rx={8}
-              fill={color} opacity={0.5} />
+            <rect x={pos.x} y={pos.y} width={ROOM_W} height={ROOM_H} rx={10}
+              fill={hexToRgba(color, 0.10)} stroke={color} strokeWidth={1.5} />
+            {/* colored top stripe */}
+            <rect x={pos.x} y={pos.y} width={ROOM_W} height={5} rx={10}
+              fill={color} opacity={0.55} />
             <text x={pos.x + ROOM_W / 2} y={pos.y + ROOM_H / 2 + 4}
-              textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={11} fill={TEXT_DARK} fontWeight={500}>
+              textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={11} fill={TEXT_DARK} fontWeight={600}>
               {node.label}
             </text>
             {zone && (
-              <text x={pos.x + ROOM_W / 2} y={pos.y + ROOM_H / 2 + 18}
+              <text x={pos.x + ROOM_W / 2} y={pos.y + ROOM_H / 2 + 19}
                 textAnchor="middle" fontFamily={FONT_FAMILY} fontSize={9} fill={TEXT_MUTED}>
                 {zone.label}
               </text>
