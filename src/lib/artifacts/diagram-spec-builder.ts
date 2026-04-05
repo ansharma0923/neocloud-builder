@@ -1,6 +1,50 @@
 import { nanoid } from 'nanoid';
 import type { CanonicalPlanState, DiagramSpec, DiagramStyle, DiagramNode, DiagramEdge, DiagramZone } from '@/types/planning';
 
+// ─── Mandatory color palette ──────────────────────────────────────────────────
+// These colors are fixed by the design system. Do not add or change them.
+export const DIAGRAM_PALETTE = {
+  core:       '#2563EB', // Primary Fabric / Core
+  storage:    '#16A34A', // Data / Storage
+  services:   '#06B6D4', // Front-end / Services
+  management: '#F59E0B', // Management
+  security:   '#EF4444', // Security / Boundary
+  accel:      '#9333EA', // Special Compute / Accel
+  altCompute: '#F97316', // Alternative Compute
+  secCompute: '#EAB308', // Secondary Compute
+  compute:    '#60A5FA', // General Compute
+  reserved:   '#E5E7EB', // Reserved / Empty
+} as const;
+
+// Zone-id → color mapping using the mandatory palette
+const ZONE_COLOR: Record<string, string> = {
+  spine:          DIAGRAM_PALETTE.core,
+  leaf:           DIAGRAM_PALETTE.services,
+  compute:        DIAGRAM_PALETTE.compute,
+  storage:        DIAGRAM_PALETTE.storage,
+  management:     DIAGRAM_PALETTE.management,
+  control:        DIAGRAM_PALETTE.services,
+  network:        DIAGRAM_PALETTE.core,
+  infrastructure: DIAGRAM_PALETTE.management,
+  data_hall:      DIAGRAM_PALETTE.compute,
+  utility:        DIAGRAM_PALETTE.management,
+  facility:       DIAGRAM_PALETTE.reserved,
+  security:       DIAGRAM_PALETTE.security,
+  row:            DIAGRAM_PALETTE.compute,
+};
+
+function zoneColorFor(id: string): string {
+  // Match by exact key first, then by substring
+  if (ZONE_COLOR[id]) return ZONE_COLOR[id];
+  for (const key of Object.keys(ZONE_COLOR)) {
+    if (id.includes(key)) return ZONE_COLOR[key];
+  }
+  return DIAGRAM_PALETTE.core;
+}
+
+/** Maximum number of compute racks to render inline; additional racks are omitted for clarity. */
+const MAX_DISPLAY_RACKS = 12;
+
 /**
  * Convert a canonical plan to a structured diagram specification.
  * Never sends raw user text to image generation.
@@ -32,6 +76,12 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
   const edges: DiagramEdge[] = [];
   const zones: DiagramZone[] = [];
   const topology = plan.topologyRelationships.value;
+  const network = plan.networkArchitecture.value;
+  const connectivity = plan.opticalOrCopperAssumptions.value;
+
+  // Uplink label from plan data (concise, only when available)
+  const uplinkLabel = network.internalBandwidth ?? undefined;
+  const downlinkLabel = connectivity.cableStandard ?? undefined;
 
   // Spine layer
   const spineCount = topology.spines ?? 2;
@@ -56,6 +106,7 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
         id: `${spineId}-${id}`,
         source: spineId,
         target: id,
+        label: uplinkLabel,
         type: 'uplink',
       });
     }
@@ -65,8 +116,9 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
   const computeItems = plan.computeInventory.value;
   const rackCount = plan.rackCount.value || 4;
   const racksPerLeaf = Math.max(1, Math.ceil(rackCount / leafCount));
+  const displayRacks = Math.min(rackCount, MAX_DISPLAY_RACKS);
 
-  for (let r = 0; r < Math.min(rackCount, 16); r++) {
+  for (let r = 0; r < displayRacks; r++) {
     const leafIndex = Math.floor(r / racksPerLeaf);
     const leafId = leafIds[Math.min(leafIndex, leafIds.length - 1)];
     const computeLabel = computeItems[0]
@@ -75,16 +127,16 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
 
     const rackId = `rack-${r + 1}`;
     nodes.push({ id: rackId, type: 'compute_rack', label: computeLabel, zone: 'compute' });
-    edges.push({ id: `${leafId}-${rackId}`, source: leafId, target: rackId, type: 'downlink' });
+    edges.push({ id: `${leafId}-${rackId}`, source: leafId, target: rackId, label: downlinkLabel, type: 'downlink' });
   }
 
-  // Zones
-  zones.push({ id: 'spine', label: 'Spine Layer', color: '#4f46e5', nodes: spineIds });
-  zones.push({ id: 'leaf', label: 'Leaf Layer', color: '#0891b2', nodes: leafIds });
+  // Zones — LR column order: spine → leaf → compute
+  zones.push({ id: 'spine', label: 'Spine Layer', color: DIAGRAM_PALETTE.core, nodes: spineIds });
+  zones.push({ id: 'leaf', label: 'Leaf Layer', color: DIAGRAM_PALETTE.services, nodes: leafIds });
   zones.push({
     id: 'compute',
     label: 'Compute Layer',
-    color: '#059669',
+    color: DIAGRAM_PALETTE.compute,
     nodes: nodes.filter((n) => n.zone === 'compute').map((n) => n.id),
   });
 
@@ -97,7 +149,7 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
     zones,
     labels: {
       rackCount: String(plan.rackCount.value),
-      powerPerRack: `${plan.rackPowerDensity.value}kW`,
+      powerPerRack: plan.rackPowerDensity.value ? `${plan.rackPowerDensity.value}kW` : '',
       spineCount: String(spineCount),
       leafCount: String(leafCount),
     },
@@ -105,29 +157,33 @@ function buildTopology2D(plan: CanonicalPlanState): DiagramSpec {
       planId: plan.planId,
       planVersion: plan.version,
       generatedAt: new Date().toISOString(),
+      layout: 'LR',
     },
     createdAt: new Date().toISOString(),
   };
 }
 
 function buildLogicalArch(plan: CanonicalPlanState): DiagramSpec {
+  const rackLabel = plan.rackCount.value ? `Compute (${plan.rackCount.value} racks)` : 'Compute';
+  const powerLabel = plan.totalPower.value ? `Power (${plan.totalPower.value}kW)` : 'Power';
+
   const nodes: DiagramNode[] = [
     { id: 'mgmt', type: 'management', label: 'Management Plane', zone: 'management' },
     { id: 'control', type: 'control', label: 'Control Plane', zone: 'control' },
-    { id: 'compute', type: 'compute_cluster', label: `Compute (${plan.rackCount.value} racks)`, zone: 'compute' },
+    { id: 'compute', type: 'compute_cluster', label: rackLabel, zone: 'compute' },
     { id: 'storage', type: 'storage_cluster', label: 'Storage Layer', zone: 'storage' },
     { id: 'network', type: 'network_fabric', label: 'Network Fabric', zone: 'network' },
-    { id: 'cooling', type: 'cooling', label: 'Cooling Infrastructure', zone: 'infrastructure' },
-    { id: 'power', type: 'power', label: `Power (${plan.totalPower.value}kW total)`, zone: 'infrastructure' },
+    { id: 'cooling', type: 'cooling', label: 'Cooling', zone: 'infrastructure' },
+    { id: 'power', type: 'power', label: powerLabel, zone: 'infrastructure' },
   ];
 
   const edges: DiagramEdge[] = [
-    { id: 'mgmt-control', source: 'mgmt', target: 'control', type: 'management' },
-    { id: 'control-compute', source: 'control', target: 'compute', type: 'control' },
-    { id: 'compute-network', source: 'compute', target: 'network', type: 'data' },
-    { id: 'compute-storage', source: 'compute', target: 'storage', type: 'storage' },
-    { id: 'power-compute', source: 'power', target: 'compute', type: 'power' },
-    { id: 'cooling-compute', source: 'cooling', target: 'compute', type: 'cooling' },
+    { id: 'mgmt-control', source: 'mgmt', target: 'control', type: 'management', label: 'mgmt' },
+    { id: 'control-compute', source: 'control', target: 'compute', type: 'control', label: 'orchestrate' },
+    { id: 'compute-network', source: 'compute', target: 'network', type: 'data', label: 'data fabric' },
+    { id: 'compute-storage', source: 'compute', target: 'storage', type: 'storage', label: 'storage I/O' },
+    { id: 'power-compute', source: 'power', target: 'compute', type: 'power', label: 'power' },
+    { id: 'cooling-compute', source: 'cooling', target: 'compute', type: 'cooling', label: 'cooling' },
   ];
 
   return {
@@ -137,36 +193,39 @@ function buildLogicalArch(plan: CanonicalPlanState): DiagramSpec {
     nodes,
     edges,
     zones: [
-      { id: 'management', label: 'Management', color: '#7c3aed', nodes: ['mgmt'] },
-      { id: 'control', label: 'Control', color: '#4f46e5', nodes: ['control'] },
-      { id: 'compute', label: 'Compute', color: '#059669', nodes: ['compute'] },
-      { id: 'storage', label: 'Storage', color: '#0891b2', nodes: ['storage'] },
-      { id: 'network', label: 'Network', color: '#d97706', nodes: ['network'] },
-      { id: 'infrastructure', label: 'Infrastructure', color: '#6b7280', nodes: ['cooling', 'power'] },
+      { id: 'management', label: 'Management', color: DIAGRAM_PALETTE.management, nodes: ['mgmt'] },
+      { id: 'control', label: 'Control', color: DIAGRAM_PALETTE.services, nodes: ['control'] },
+      { id: 'compute', label: 'Compute', color: DIAGRAM_PALETTE.compute, nodes: ['compute'] },
+      { id: 'storage', label: 'Storage', color: DIAGRAM_PALETTE.storage, nodes: ['storage'] },
+      { id: 'network', label: 'Network', color: DIAGRAM_PALETTE.core, nodes: ['network'] },
+      { id: 'infrastructure', label: 'Infrastructure', color: DIAGRAM_PALETTE.management, nodes: ['cooling', 'power'] },
     ],
     labels: {},
-    metadata: { planId: plan.planId, planVersion: plan.version },
+    metadata: { planId: plan.planId, planVersion: plan.version, layout: 'LR' },
     createdAt: new Date().toISOString(),
   };
 }
 
 function buildSiteLayout(plan: CanonicalPlanState): DiagramSpec {
+  const rowA = plan.rackCount.value ? Math.ceil(plan.rackCount.value / 2) : 0;
+  const rowB = plan.rackCount.value ? Math.floor(plan.rackCount.value / 2) : 0;
+
   const nodes: DiagramNode[] = [
     { id: 'mep', type: 'mep_room', label: 'MEP / Power', zone: 'utility' },
     { id: 'cooling_plant', type: 'cooling', label: 'Cooling Plant', zone: 'utility' },
-    { id: 'row_a', type: 'rack_row', label: `Row A (${Math.ceil(plan.rackCount.value / 2)} racks)`, zone: 'data_hall' },
-    { id: 'row_b', type: 'rack_row', label: `Row B (${Math.floor(plan.rackCount.value / 2)} racks)`, zone: 'data_hall' },
-    { id: 'network_room', type: 'network_room', label: 'Network/Meet-Me', zone: 'network' },
+    { id: 'row_a', type: 'rack_row', label: rowA ? `Row A (${rowA} racks)` : 'Row A', zone: 'data_hall' },
+    { id: 'row_b', type: 'rack_row', label: rowB ? `Row B (${rowB} racks)` : 'Row B', zone: 'data_hall' },
+    { id: 'network_room', type: 'network_room', label: 'Network / Meet-Me', zone: 'network' },
     { id: 'loading_dock', type: 'loading', label: 'Loading Dock', zone: 'facility' },
   ];
 
   const edges: DiagramEdge[] = [
-    { id: 'mep-row_a', source: 'mep', target: 'row_a', type: 'power' },
-    { id: 'mep-row_b', source: 'mep', target: 'row_b', type: 'power' },
-    { id: 'cooling_plant-row_a', source: 'cooling_plant', target: 'row_a', type: 'cooling' },
-    { id: 'cooling_plant-row_b', source: 'cooling_plant', target: 'row_b', type: 'cooling' },
-    { id: 'network_room-row_a', source: 'network_room', target: 'row_a', type: 'network' },
-    { id: 'network_room-row_b', source: 'network_room', target: 'row_b', type: 'network' },
+    { id: 'mep-row_a', source: 'mep', target: 'row_a', type: 'power', label: 'power' },
+    { id: 'mep-row_b', source: 'mep', target: 'row_b', type: 'power', label: 'power' },
+    { id: 'cooling_plant-row_a', source: 'cooling_plant', target: 'row_a', type: 'cooling', label: 'cooling' },
+    { id: 'cooling_plant-row_b', source: 'cooling_plant', target: 'row_b', type: 'cooling', label: 'cooling' },
+    { id: 'network_room-row_a', source: 'network_room', target: 'row_a', type: 'network', label: 'network' },
+    { id: 'network_room-row_b', source: 'network_room', target: 'row_b', type: 'network', label: 'network' },
   ];
 
   return {
@@ -176,13 +235,13 @@ function buildSiteLayout(plan: CanonicalPlanState): DiagramSpec {
     nodes,
     edges,
     zones: [
-      { id: 'data_hall', label: 'Data Hall', color: '#059669', nodes: ['row_a', 'row_b'] },
-      { id: 'utility', label: 'Utility', color: '#6b7280', nodes: ['mep', 'cooling_plant'] },
-      { id: 'network', label: 'Network', color: '#4f46e5', nodes: ['network_room'] },
-      { id: 'facility', label: 'Facility', color: '#374151', nodes: ['loading_dock'] },
+      { id: 'data_hall', label: 'Data Hall', color: zoneColorFor('data_hall'), nodes: ['row_a', 'row_b'] },
+      { id: 'utility', label: 'Utility', color: zoneColorFor('utility'), nodes: ['mep', 'cooling_plant'] },
+      { id: 'network', label: 'Network', color: zoneColorFor('network'), nodes: ['network_room'] },
+      { id: 'facility', label: 'Facility', color: zoneColorFor('facility'), nodes: ['loading_dock'] },
     ],
     labels: {},
-    metadata: { planId: plan.planId, planVersion: plan.version },
+    metadata: { planId: plan.planId, planVersion: plan.version, layout: 'grid' },
     createdAt: new Date().toISOString(),
   };
 }
@@ -190,14 +249,17 @@ function buildSiteLayout(plan: CanonicalPlanState): DiagramSpec {
 function buildRackRow(plan: CanonicalPlanState): DiagramSpec {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
-  const rackCount = Math.min(plan.rackCount.value || 8, 20); // Limit for display
+  const rackCount = Math.min(plan.rackCount.value || 8, 16);
 
   for (let i = 0; i < rackCount; i++) {
     const computeItem = plan.computeInventory.value[0];
+    const rackLabel = computeItem?.model
+      ? `R${String(i + 1).padStart(2, '0')} · ${computeItem.model}`
+      : `Rack ${String(i + 1).padStart(2, '0')}`;
     nodes.push({
       id: `rack-${i + 1}`,
       type: 'rack',
-      label: `R${String(i + 1).padStart(2, '0')}\n${computeItem?.model ?? 'Compute'}`,
+      label: rackLabel,
       zone: 'row',
       metadata: { powerKw: plan.rackPowerDensity.value },
     });
@@ -220,11 +282,11 @@ function buildRackRow(plan: CanonicalPlanState): DiagramSpec {
     nodes,
     edges,
     zones: [
-      { id: 'row', label: 'Rack Row', color: '#059669', nodes: nodes.filter(n => n.zone === 'row').map(n => n.id) },
-      { id: 'network', label: 'Network', color: '#4f46e5', nodes: nodes.filter(n => n.zone === 'network').map(n => n.id) },
+      { id: 'network', label: 'Network', color: DIAGRAM_PALETTE.core, nodes: nodes.filter(n => n.zone === 'network').map(n => n.id) },
+      { id: 'row', label: 'Rack Row', color: DIAGRAM_PALETTE.compute, nodes: nodes.filter(n => n.zone === 'row').map(n => n.id) },
     ],
-    labels: { powerPerRack: `${plan.rackPowerDensity.value}kW` },
-    metadata: { planId: plan.planId, planVersion: plan.version },
+    labels: { powerPerRack: plan.rackPowerDensity.value ? `${plan.rackPowerDensity.value}kW` : '' },
+    metadata: { planId: plan.planId, planVersion: plan.version, layout: 'TD' },
     createdAt: new Date().toISOString(),
   };
 }

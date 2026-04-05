@@ -318,7 +318,7 @@ function DiagramModal({ spec, svgId, title, onClose }: { spec: DiagramSpec; svgI
       canvas.height = DIAGRAM_FULL_H * SCALE;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
